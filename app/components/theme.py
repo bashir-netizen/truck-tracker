@@ -15,22 +15,22 @@ from app.components import db
 
 # -- palette ---------------------------------------------------------------
 ACCENT = config.ACCENT_COLOR          # burnt orange, used sparingly
-ACCENT_RGB = [200, 80, 30]
-CORRIDOR_RGB = [31, 111, 235]         # muted blue for route lines (one colour)
-PLACE_RGB = [40, 40, 46]              # neutral dark for place bubbles
+ACCENT_RGB = [31, 111, 235]           # primary blue
+CORRIDOR_RGB = [71, 85, 105]          # neutral slate for route lines
+PLACE_RGB = [30, 41, 59]              # slate-dark place bubbles (labelled on map)
 
-# Journey character labels + colours (used by the trip-mix line and the strip).
+# Journey character labels + colours (one palette for filter, strip, headline).
 CLASS_LABELS = {"long_haul": "long haul", "regional": "regional",
                 "local": "local", "yard": "yard"}
-CLASS_COLORS = {"long_haul": "#C8501E", "regional": "#1f6feb",
-                "local": "#3F7D58", "yard": "#8A857C"}
-INK = "#1B1A17"                       # near-black text
-MUTED = "#8A857C"                     # secondary text
-HAIRLINE = "#E7E3DB"                  # borders / gridlines
-PAPER = "#FBFAF7"                     # warm off-white background
+TRIP_CLASS_COLORS = {"long_haul": "#1F6FEB", "regional": "#D97706", "local": "#16A34A"}
+CLASS_COLORS = {**TRIP_CLASS_COLORS, "yard": "#94A3B8"}
+INK = "#0F172A"                       # slate ink (body text)
+MUTED = "#64748B"                     # secondary text
+HAIRLINE = "#E5E7EB"                  # borders / gridlines
+PAPER = "#F7F8FA"                     # cool near-white background
 CARD = "#FFFFFF"
-GOOD = "#3F7D58"
-BAD = "#B23A2E"
+GOOD = "#16A34A"
+BAD = "#DC2626"
 
 FONT = ('-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, '
         'Arial, sans-serif')
@@ -48,6 +48,17 @@ _CSS = f"""
   .block-container {{ padding-top: 2.4rem; padding-bottom: 4rem; max-width: 1100px; }}
   h1, h2, h3 {{ letter-spacing: -0.02em; font-weight: 680; }}
   a {{ color: {ACCENT}; }}
+  /* widget labels must read as dark body text (belt-and-suspenders with config.toml) */
+  [data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] p {{
+    color: {INK} !important; font-weight: 600; }}
+
+  .tt-strip {{ border-top: 1px solid {HAIRLINE}; border-bottom: 1px solid {HAIRLINE};
+    padding: .55rem 0 .15rem; margin: .4rem 0 1rem; }}
+  .tt-legend {{ display: flex; gap: 1.2rem; font-size: .8rem; color: {INK};
+    font-weight: 600; margin-bottom: .15rem; }}
+  .tt-legend .dot {{ display: inline-block; width: 9px; height: 9px; border-radius: 999px;
+    margin-right: .4rem; vertical-align: middle; }}
+  .tt-mix {{ font-size: 1.0rem; color: {INK}; margin: .2rem 0 .6rem; }}
 
   .tt-eyebrow {{ text-transform: uppercase; letter-spacing: .14em;
     font-size: .70rem; font-weight: 700; color: {MUTED}; }}
@@ -55,7 +66,8 @@ _CSS = f"""
   .tt-sub {{ color: {MUTED}; font-size: .95rem; }}
 
   .tt-card {{ background: {CARD}; border: 1px solid {HAIRLINE};
-    border-radius: 14px; padding: 1.0rem 1.1rem; height: 100%; }}
+    border-radius: 14px; padding: 1.0rem 1.1rem; height: 100%;
+    box-shadow: 0 1px 2px rgba(15,23,42,.06), 0 1px 3px rgba(15,23,42,.04); }}
   .tt-card .lbl {{ text-transform: uppercase; letter-spacing: .08em;
     font-size: .68rem; font-weight: 700; color: {MUTED}; }}
   .tt-card .val {{ font-size: 1.85rem; font-weight: 720; line-height: 1.05;
@@ -74,8 +86,8 @@ _CSS = f"""
     padding:.6rem 0; border-bottom:1px solid {HAIRLINE}; }}
   .tt-pill {{ display:inline-block; padding:.08rem .5rem; border-radius:999px;
     font-size:.72rem; font-weight:700; }}
-  .tt-pill.high {{ background:#F6E1DD; color:{BAD}; }}
-  .tt-pill.medium {{ background:#F6ECD9; color:#9A6B16; }}
+  .tt-pill.high {{ background:#FEE2E2; color:{BAD}; }}
+  .tt-pill.medium {{ background:#FEF3C7; color:#B45309; }}
   hr {{ border:none; border-top:1px solid {HAIRLINE}; margin:1.2rem 0; }}
 </style>
 """

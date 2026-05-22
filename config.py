@@ -115,7 +115,7 @@ RATES = {
 
 # --- Dashboard (Stage 4) --------------------------------------------------
 
-ACCENT_COLOR = "#C8501E"  # one warm accent; muted neutrals everywhere else
+ACCENT_COLOR = "#1F6FEB"  # primary blue (clean professional theme)
 
 # Hide trivial in-traffic stops shorter than this on the map/tables.
 STOP_MIN_DISPLAY_S = 180

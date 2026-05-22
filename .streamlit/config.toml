@@ -1,0 +1,10 @@
+# App-wide theme. Controls widget labels, inputs, and buttons (which injected
+# CSS can't reliably reach), so contrast is correct everywhere.
+# Note: Streamlit reads this at startup — a Cloud reboot is needed to apply it.
+[theme]
+base = "light"
+primaryColor = "#1F6FEB"
+backgroundColor = "#F7F8FA"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#0F172A"
+font = "sans serif"

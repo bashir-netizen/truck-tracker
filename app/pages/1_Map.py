@@ -38,7 +38,9 @@ FILTER_TO_CHAR = {"All": None, "Long haul": "long_haul", "Regional": "regional",
 CLASS_LABELS = getattr(theme, "CLASS_LABELS", {
     "long_haul": "long haul", "regional": "regional", "local": "local", "yard": "yard"})
 CLASS_COLORS = getattr(theme, "CLASS_COLORS", {
-    "long_haul": "#C8501E", "regional": "#1f6feb", "local": "#3F7D58", "yard": "#8A857C"})
+    "long_haul": "#1F6FEB", "regional": "#D97706", "local": "#16A34A", "yard": "#94A3B8"})
+TRIP_CLASS_COLORS = getattr(theme, "TRIP_CLASS_COLORS", {
+    "long_haul": "#1F6FEB", "regional": "#D97706", "local": "#16A34A"})
 
 
 def day_start(d):
@@ -90,9 +92,10 @@ journeys = db.q(
 
 # --- trip-mix headline (all classes) --------------------------------------
 counts = journeys["journey_character"].value_counts().to_dict() if not journeys.empty else {}
-parts = [f"**{int(counts[c])}** {CLASS_LABELS[c]}"
+parts = [f"<b>{int(counts[c])}</b> {CLASS_LABELS[c]}"
          for c in ["long_haul", "regional", "local", "yard"] if counts.get(c, 0)]
-st.markdown("This period: " + " · ".join(parts) if parts else "No trips this period.")
+st.markdown(f'<div class="tt-mix">This period: {" · ".join(parts)}</div>' if parts
+            else '<div class="tt-mix">No trips this period.</div>', unsafe_allow_html=True)
 
 # --- class filter ---------------------------------------------------------
 choice = st.segmented_control("Class", list(FILTER_TO_CHAR), default="All", key="class_filter")
@@ -205,15 +208,16 @@ if any(v is not None for v in km_rates.values()):
 
 # --- what-if rate calculator ----------------------------------------------
 with st.expander("What-if rate calculator"):
-    if all(v is None for v in km_rates.values()):
-        st.caption("No rates configured yet. Enter hypothetical values below to see "
-                   "what the period would be worth at those rates.")
+    st.markdown("Enter hypothetical rates per kilometre to see what this period "
+                "would be worth.")
     w = st.columns(3)
     inputs = {}
     for col, c in zip(w, ROUTE_CLASSES):
         inputs[c] = col.number_input(f"{CLASS_LABELS[c].title()} KES/km",
                                      value=km_rates[c], min_value=0.0, step=5.0, key=f"wi_{c}")
-    if st.button("Calculate"):
+        if inputs[c] is None:
+            col.caption("e.g. 95")
+    if st.button("Calculate", type="primary"):
         total, breakdown, incl, _ = estimate.revenue_by_class(all_routes,
                                                               {c: inputs[c] for c in ROUTE_CLASSES})
         st.session_state["whatif"] = (total, breakdown, incl)
@@ -228,25 +232,33 @@ with st.expander("What-if rate calculator"):
 
 # --- weekly activity strip ------------------------------------------------
 if not fj.empty:
-    monthly = span / 604800 > 12
+    with st.container(border=True):
+        present = [c for c in ROUTE_CLASSES if (fj["journey_character"] == c).any()]
+        legend = " ".join(
+            f'<span><span class="dot" style="background:{TRIP_CLASS_COLORS[c]}"></span>'
+            f'{CLASS_LABELS[c]}</span>' for c in present)
+        st.markdown(f'<div class="tt-legend">{legend}</div>', unsafe_allow_html=True)
 
-    def bucket(ts):
-        dt = datetime.fromtimestamp(ts, timezone.utc)
-        return dt.strftime("%b %Y") if monthly else (dt - timedelta(days=dt.weekday())).strftime("%d %b")
+        monthly = span / 604800 > 12
 
-    strip = fj.copy()
-    strip["bucket"] = strip["start_ts"].apply(bucket)
-    strip["Class"] = strip["journey_character"].map(CLASS_LABELS)
-    g = strip.groupby(["bucket", "Class"]).size().reset_index(name="trips")
-    fig = px.bar(g, x="bucket", y="trips", color="Class",
-                 color_discrete_map={CLASS_LABELS[c]: CLASS_COLORS[c] for c in CLASS_LABELS})
-    fig.update_layout(height=90, margin=dict(l=0, r=0, t=4, b=0), showlegend=False,
-                      xaxis_title=None, yaxis_title=None, yaxis_visible=False,
-                      paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                      font=dict(family=theme.FONT, size=11))
-    fig.update_xaxes(showgrid=False)
-    fig.update_traces(hovertemplate="%{x}<br>%{fullData.name}: %{y} trips<extra></extra>")
-    st.plotly_chart(fig, use_container_width=True)
+        def bucket(ts):
+            dt = datetime.fromtimestamp(ts, timezone.utc)
+            return dt.strftime("%b %Y") if monthly else (dt - timedelta(days=dt.weekday())).strftime("%d %b")
+
+        strip = fj.copy()
+        strip["bucket"] = strip["start_ts"].apply(bucket)
+        strip["Class"] = strip["journey_character"].map(CLASS_LABELS)
+        g = strip.groupby(["bucket", "Class"]).size().reset_index(name="trips")
+        fig = px.bar(g, x="bucket", y="trips", color="Class",
+                     color_discrete_map={CLASS_LABELS[c]: TRIP_CLASS_COLORS[c] for c in ROUTE_CLASSES})
+        fig.update_layout(height=110, margin=dict(l=0, r=0, t=2, b=2), showlegend=False,
+                          hovermode="x unified", bargap=0.35, xaxis_title=None, yaxis_title=None,
+                          paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                          font=dict(family=theme.FONT, size=11, color=theme.MUTED))
+        fig.update_yaxes(visible=False)
+        fig.update_xaxes(showgrid=False, tickfont=dict(color=theme.MUTED, size=11), automargin=True)
+        fig.update_traces(hovertemplate="%{fullData.name}: %{y} trips<extra></extra>")
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 map_slot = st.container()
 
@@ -334,6 +346,13 @@ with map_slot:
                 "ScatterplotLayer", data=pl, get_position=["lon", "lat"], get_radius="radius",
                 get_fill_color="fill", radius_min_pixels=5, radius_max_pixels=30, pickable=True,
                 stroked=True, get_line_color=[255, 255, 255, 230], line_width_min_pixels=1))
+            # readable place names directly on the map (no hover needed)
+            layers.append(pdk.Layer(
+                "TextLayer", data=pl, get_position=["lon", "lat"], get_text="label",
+                get_size=13, size_units="pixels", get_color=[15, 23, 42],
+                get_pixel_offset=[0, -16], get_text_anchor="'middle'",
+                get_alignment_baseline="'bottom'", background=True,
+                get_background_color=[255, 255, 255, 210]))
 
         if sel_corridor and not corr_df.empty:
             path = corr_df.loc[corr_df["key"] == sel_corridor, "path"].iloc[0]
