@@ -6,7 +6,7 @@ header is the title), muted gridlines, tight margins, units in hovers.
 """
 
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import streamlit as st
 
@@ -108,20 +108,65 @@ def fmt_dt(ts, with_time=True):
     return dt.strftime("%d %b %Y, %H:%M") if with_time else dt.strftime("%d %b %Y")
 
 
-PERIODS = {"Last 7 days": 7, "Last 30 days": 30, "Last 90 days": 90, "All data": None}
+def fmt_dur(seconds):
+    """Human duration: '3d 4h', '5h 12m', '23m'."""
+    if seconds is None:
+        return "—"
+    s = int(seconds)
+    h, m = s // 3600, (s % 3600) // 60
+    if h >= 24:
+        return f"{h // 24}d {h % 24}h"
+    if h:
+        return f"{h}h {m:02d}m"
+    return f"{m}m"
+
+
+# Preset name -> length in seconds (None = all history).
+PERIODS = {
+    "Last 24 hours": 86400,
+    "Last 3 days": 3 * 86400,
+    "Last 7 days": 7 * 86400,
+    "Last 30 days": 30 * 86400,
+    "All data": None,
+    "Custom range…": "custom",
+}
+_DEFAULT = "Last 30 days"
+
+
+def _day_start(d):
+    return int(datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp())
 
 
 def period_selector():
     """Sidebar period control, anchored to the latest data we hold.
 
-    Returns (from_ts, to_ts, label). Persists across pages via session state.
+    Presets plus a custom from–to range (for matching a billing period).
+    Returns (from_ts, to_ts, label) and shows the resolved range in the sidebar.
     """
     st.sidebar.markdown("**Period**")
-    label = st.sidebar.selectbox("Period", list(PERIODS), index=1,
-                                 label_visibility="collapsed", key="tt_period")
-    days = PERIODS[label]
-    to_ts = db.last_data_ts() or int(time.time())
-    from_ts = 0 if days is None else to_ts - days * 86400
+    choice = st.sidebar.selectbox("Period", list(PERIODS),
+                                  index=list(PERIODS).index(_DEFAULT),
+                                  label_visibility="collapsed", key="tt_period")
+    anchor = db.last_data_ts() or int(time.time())
+    span = PERIODS[choice]
+
+    if span == "custom":
+        d_to = datetime.fromtimestamp(anchor, timezone.utc).date()
+        d_from = (datetime.fromtimestamp(anchor, timezone.utc) - timedelta(days=30)).date()
+        c1, c2 = st.sidebar.columns(2)
+        d_from = c1.date_input("From", value=d_from, key="tt_from")
+        d_to = c2.date_input("To", value=d_to, key="tt_to")
+        if d_from > d_to:
+            d_from, d_to = d_to, d_from
+        from_ts, to_ts = _day_start(d_from), _day_start(d_to) + 86399
+        label = f"{d_from:%d %b} – {d_to:%d %b %Y}"
+    elif span is None:
+        from_ts, to_ts, label = 0, anchor, "All data"
+    else:
+        from_ts, to_ts, label = anchor - span, anchor, choice
+
+    st.sidebar.caption(f"Showing {fmt_dt(from_ts, with_time=False)} – "
+                       f"{fmt_dt(to_ts, with_time=False)}")
     return from_ts, to_ts, label
 
 

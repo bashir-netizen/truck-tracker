@@ -74,6 +74,14 @@ MIN_ECONOMY_KM = 2
 DRIFT_MIN_TRIP_KM = 5
 DRIFT_MIN_WEEK_KM = 50   # don't judge a week's economy on too little driving
 
+# --- GPS track (positions) ------------------------------------------------
+# Keep a track point only when it is at least this far from the last kept
+# point. Drops the many redundant parked points; preserves road shape.
+TRACK_MIN_METERS = 25
+
 # --- Dashboard (Stage 4) --------------------------------------------------
 
 ACCENT_COLOR = "#C8501E"  # one warm accent; muted neutrals everywhere else
+
+# Hide trivial in-traffic stops shorter than this on the map/tables.
+STOP_MIN_DISPLAY_S = 180

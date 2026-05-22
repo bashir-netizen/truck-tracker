@@ -87,6 +87,43 @@ CREATE TABLE IF NOT EXISTS eco_events (
 );
 CREATE INDEX IF NOT EXISTS idx_eco_ts ON eco_events (unit_id, ts);
 
+-- Parkings (engine-off stays) from the unit_stays report.
+CREATE TABLE IF NOT EXISTS parkings (
+    unit_id    INTEGER NOT NULL,
+    start_ts   INTEGER NOT NULL,
+    end_ts     INTEGER,
+    duration_s INTEGER,
+    lat        REAL,
+    lon        REAL,
+    location   TEXT,
+    raw        TEXT,
+    PRIMARY KEY (unit_id, start_ts)
+);
+
+-- Stops (brief halts during a trip) from the unit_stops report.
+CREATE TABLE IF NOT EXISTS stops (
+    unit_id    INTEGER NOT NULL,
+    start_ts   INTEGER NOT NULL,
+    end_ts     INTEGER,
+    duration_s INTEGER,
+    lat        REAL,
+    lon        REAL,
+    location   TEXT,
+    raw        TEXT,
+    PRIMARY KEY (unit_id, start_ts)
+);
+
+-- Decimated GPS track points (the actual road-following route).
+CREATE TABLE IF NOT EXISTS positions (
+    unit_id   INTEGER NOT NULL,
+    ts        INTEGER NOT NULL,
+    lat       REAL,
+    lon       REAL,
+    speed_kmh INTEGER,
+    PRIMARY KEY (unit_id, ts)
+);
+CREATE INDEX IF NOT EXISTS idx_positions_ts ON positions (unit_id, ts);
+
 -- Audit trail of every ingestion run (supports the freshness contract).
 CREATE TABLE IF NOT EXISTS ingestion_log (
     run_ts         INTEGER NOT NULL,

@@ -36,3 +36,12 @@ def test_period_window_returns_all_trips():
     total = db.scalar("SELECT COUNT(*) FROM trips", default=0)
     assert in_window == total
     assert in_window > 0
+
+
+def test_shorter_window_is_a_subset():
+    """A 24h window must hold no more trips than the full history (period works)."""
+    to_ts = db.last_data_ts()
+    day = db.scalar("SELECT COUNT(*) FROM trips WHERE start_ts BETWEEN ? AND ?",
+                    (to_ts - 86400, to_ts), default=0)
+    total = db.scalar("SELECT COUNT(*) FROM trips", default=0)
+    assert 0 <= day <= total

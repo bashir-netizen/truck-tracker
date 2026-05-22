@@ -22,7 +22,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 import config
-from ingest import eco_events, fillings, trips, unit_state
+from ingest import (eco_events, fillings, parkings, positions, stops, trips,
+                    unit_state)
 from ingest.wialon import WialonClient, WialonError
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
@@ -105,13 +106,18 @@ def main(argv=None):
     print(f"Unit {unit_id} ({unit.get('nm')!r}); pulling {fmt(ts_from)} .. {fmt(ts_to)}")
 
     con = sqlite3.connect(config.DB_PATH)
-    added = {"trips": 0, "fillings": 0, "eco": 0, "unit_state": 0}
+    added = {k: 0 for k in ("trips", "fillings", "eco", "parkings", "stops",
+                            "positions", "unit_state")}
     status, detail = "ok", ""
     try:
         for w_from, w_to in windows(ts_from, ts_to):
             added["trips"] += trips.fetch_and_store(client, con, unit_id, resource_id, w_from, w_to)
             added["fillings"] += fillings.fetch_and_store(client, con, unit_id, resource_id, w_from, w_to)
             added["eco"] += eco_events.fetch_and_store(client, con, unit_id, resource_id, w_from, w_to)
+            added["parkings"] += parkings.fetch_and_store(client, con, unit_id, resource_id, w_from, w_to)
+            added["stops"] += stops.fetch_and_store(client, con, unit_id, resource_id, w_from, w_to)
+            # messages-based; cleans up reports first, so it runs last in the window
+            added["positions"] += positions.fetch_and_store(client, con, unit_id, w_from, w_to)
         added["unit_state"] = unit_state.snapshot(con, unit)
         con.commit()
     except WialonError as e:
@@ -119,6 +125,9 @@ def main(argv=None):
         con.rollback()
         print(f"Ingestion error: {e}")
     finally:
+        if status == "ok":
+            detail = (f"parkings={added['parkings']} stops={added['stops']} "
+                      f"positions={added['positions']}")
         con.execute(
             "INSERT OR REPLACE INTO ingestion_log "
             "(run_ts, since_ts, until_ts, trips_added, fillings_added, eco_added, status, detail) "
@@ -130,7 +139,8 @@ def main(argv=None):
         con.close()
 
     print(f"Added: trips={added['trips']} fillings={added['fillings']} "
-          f"eco={added['eco']} unit_state={added['unit_state']}  status={status}")
+          f"eco={added['eco']} parkings={added['parkings']} stops={added['stops']} "
+          f"positions={added['positions']} unit_state={added['unit_state']}  status={status}")
     return 0 if status == "ok" else 1
 
 

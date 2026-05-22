@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from ingest import eco_events, fillings, trips, unit_state, wialon
+from ingest import eco_events, fillings, parkings, positions, stops, trips, unit_state, wialon
 
 ROOT = Path(__file__).resolve().parent.parent
 FIX = Path(__file__).resolve().parent / "fixtures"
@@ -140,6 +140,35 @@ def test_fillings_and_eco_idempotent(con):
     assert fillings.fetch_and_store(fc, con, UNIT_ID, 0, 0, 0) == 0
     assert eco_events.fetch_and_store(ec, con, UNIT_ID, 0, 0, 0) > 0
     assert eco_events.fetch_and_store(ec, con, UNIT_ID, 0, 0, 0) == 0
+
+
+@pytest.mark.parametrize("mod,fixture", [(parkings, "parkings_rows"), (stops, "stops_rows")])
+def test_parse_interval_rows(mod, fixture):
+    for row in load(fixture):
+        rec = mod.parse_row(UNIT_ID, row)
+        assert rec is not None
+        unit_id, start_ts, end_ts, dur, lat, lon, location, raw = rec
+        assert unit_id == UNIT_ID
+        assert isinstance(start_ts, int)
+        assert end_ts is None or end_ts >= start_ts
+        assert dur is None or dur >= 0
+        assert json.loads(raw)
+
+
+def test_parkings_stops_idempotent(con):
+    pc, sc = FakeClient(load("parkings_rows")), FakeClient(load("stops_rows"))
+    assert parkings.fetch_and_store(pc, con, UNIT_ID, 0, 0, 0) > 0
+    assert parkings.fetch_and_store(pc, con, UNIT_ID, 0, 0, 0) == 0
+    assert stops.fetch_and_store(sc, con, UNIT_ID, 0, 0, 0) > 0
+    assert stops.fetch_and_store(sc, con, UNIT_ID, 0, 0, 0) == 0
+
+
+def test_positions_decimate_drops_near_points():
+    # three points: ~0 m apart, then ~111 m east (> 25 m threshold)
+    pts = [(100, 0.0, 0.0, 0), (110, 0.0, 0.00001, 0), (120, 0.0, 0.001, 40)]
+    kept = positions.decimate(pts, min_m=25)
+    assert len(kept) == 2          # the ~1 m point is dropped
+    assert kept[0][0] == 100 and kept[1][0] == 120
 
 
 def test_unit_state_snapshot(con):

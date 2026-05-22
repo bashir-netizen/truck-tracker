@@ -171,6 +171,37 @@ class WialonClient:
         finally:
             self.call("report/cleanup_result", {})
 
+    def load_positions(self, unit_id, ts_from, ts_to, page=5000):
+        """Return [(t, lat, lon, speed)] for position messages in the interval.
+
+        Loads the interval, pages through it with get_messages, then unloads.
+        Messages and reports cannot share a session, so we clean up any report
+        first. Only messages carrying a `pos` are returned.
+        """
+        self.call("report/cleanup_result", {})
+        info = self.call("messages/load_interval", {
+            "itemId": unit_id, "timeFrom": int(ts_from), "timeTo": int(ts_to),
+            "flags": 0, "flagsMask": 0, "loadCount": 0,
+        })
+        count = info.get("count", 0) if isinstance(info, dict) else 0
+        out = []
+        try:
+            idx = 0
+            while idx < count:
+                batch = self.call("messages/get_messages",
+                                  {"indexFrom": idx, "indexTo": min(idx + page, count)})
+                msgs = batch.get("messages") if isinstance(batch, dict) else batch
+                if not msgs:
+                    break
+                for m in msgs:
+                    pos = m.get("pos")
+                    if pos:
+                        out.append((m.get("t"), pos.get("y"), pos.get("x"), pos.get("s")))
+                idx += len(msgs)
+        finally:
+            self.call("messages/unload", {})
+        return out
+
     # -- transport ---------------------------------------------------------
 
     def _post(self, svc, params, with_sid):
