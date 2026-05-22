@@ -1,0 +1,17 @@
+# Secrets — never commit
+.env
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# OS
+.DS_Store
+
+# SQLite sidecars (the database file data/truck.db IS committed by design;
+# only the transient WAL/journal files are ignored)
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal

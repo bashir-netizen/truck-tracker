@@ -1,0 +1,2 @@
+# Empty until Genwatt rates are known (Stage 6). Do not add monetary logic
+# anywhere else — it lands here, isolated from ingest/enrich/app.
