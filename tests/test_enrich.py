@@ -59,6 +59,14 @@ def add_place(con, pid, label, point):
 
 # -- journeys --------------------------------------------------------------
 
+def test_journey_character_thresholds():
+    assert journeys.character(350_000, 3600) == "long_haul"
+    assert journeys.character(50_000, 90_000) == "long_haul"   # >24h spans
+    assert journeys.character(150_000, 3600) == "regional"
+    assert journeys.character(40_000, 3600) == "local"
+    assert journeys.character(2_000, 600) == "yard"
+
+
 def test_journeys_stitch_and_split(con):
     # two legs <3h apart = one journey; a >3h gap starts a second
     add_trip(con, 0, 1000, A, B, 10000, 4)

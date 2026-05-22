@@ -170,6 +170,7 @@ CREATE TABLE IF NOT EXISTS journeys (
     fuel_l          REAL,
     l_per_100km     REAL,
     is_local        INTEGER,        -- 1 = local/yard, 0 = route
+    journey_character TEXT,         -- long_haul | regional | local | yard
     UNIQUE (unit_id, start_ts)
 );
 

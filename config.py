@@ -42,6 +42,15 @@ DBSCAN_MIN_SAMPLES = 3    # min visits to register a place
 JOURNEY_SPLIT_HOURS = 3
 # A journey shorter than this (or returning to its origin) is "local", not a route.
 ROUTE_MIN_KM = 5
+
+# Journey "character" buckets (tunable without code changes). A journey is
+# long_haul if it covers the distance OR spans the duration.
+TRIP_THRESHOLDS = {
+    "long_haul_min_distance_m": 300_000,
+    "long_haul_min_duration_s": 86_400,
+    "regional_min_distance_m": 80_000,
+    "local_min_distance_m": 5_000,
+}
 # Significant-place clustering: town scale, and min_samples=1 so a
 # destination visited only once still becomes a place. Only journey endpoints
 # and parkings at least PLACE_MIN_DWELL_S long seed a place (keeps out the

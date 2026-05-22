@@ -10,6 +10,19 @@ import config
 from enrich import places as places_mod
 
 
+def character(distance_m, duration_s):
+    """Bucket a journey by character from config.TRIP_THRESHOLDS."""
+    th = config.TRIP_THRESHOLDS
+    if (distance_m >= th["long_haul_min_distance_m"]
+            or (duration_s or 0) >= th["long_haul_min_duration_s"]):
+        return "long_haul"
+    if distance_m >= th["regional_min_distance_m"]:
+        return "regional"
+    if distance_m >= th["local_min_distance_m"]:
+        return "local"
+    return "yard"
+
+
 def _split(legs, gap_s):
     run = []
     for leg in legs:
@@ -46,12 +59,12 @@ def rebuild(con, unit_id):
             if places_mod.haversine_m(olat, olon, dlat, dlon) < config.PLACE_EPS_M:
                 is_local = 1  # returned to its own origin area
         out.append((unit_id, j[0]["start_ts"], j[-1]["end_ts"], olat, olon, dlat, dlon,
-                    len(j), dist, dur, fuel, l100, is_local))
+                    len(j), dist, dur, fuel, l100, is_local, character(dist, dur)))
 
     con.executemany(
         "INSERT INTO journeys (unit_id, start_ts, end_ts, origin_lat, origin_lon, "
         "dest_lat, dest_lon, leg_count, distance_m, duration_s, fuel_l, l_per_100km, "
-        "is_local) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", out)
+        "is_local, journey_character) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", out)
     return len(out)
 
 
