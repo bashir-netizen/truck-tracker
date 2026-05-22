@@ -1,33 +1,35 @@
 """Ingestion entry point.
 
-Stage 1 scope — prove the connection works end to end:
-  1. load the token from the environment
-  2. create the SQLite database from schema.sql
-  3. log in to Wialon
-  4. find the unit and print its id + last position
-  5. probe token scope (which data blocks came back)
+One job per run: log in, find the unit, pull trips / fillings / eco
+events for the window, snapshot the unit's counters, write an audit row,
+and exit. Idempotent — re-running over the same period adds nothing.
 
-Stage 2 adds the actual data pulls (trips, fillings, eco events,
-unit_state snapshot) and the --since backfill flag.
-
-Run:  python -m ingest.run
+Usage:
+    python -m ingest.run                 # last 30 days
+    python -m ingest.run --since 90       # last 90 days
+    python -m ingest.run --since 2026-01-01
 """
 
+import argparse
 import os
+import re
 import sqlite3
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 import config
+from ingest import eco_events, fillings, trips, unit_state
 from ingest.wialon import WialonClient, WialonError
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
+WINDOW_DAYS = 30  # report interval per exec; backfills are chunked into these
 
 
 def init_db(db_path):
-    """Create the database and all tables if they do not yet exist."""
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(str(path))
@@ -38,17 +40,37 @@ def init_db(db_path):
         con.close()
 
 
-def main():
+def parse_since(value, now):
+    """A '--since' value to an epoch. Accepts days-back or YYYY-MM-DD."""
+    value = value.strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        dt = datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        return int(dt.timestamp())
+    return now - int(value) * 86400
+
+
+def windows(ts_from, ts_to, step_days=WINDOW_DAYS):
+    """Yield (start, end) chunks of at most step_days covering the range."""
+    step = step_days * 86400
+    start = ts_from
+    while start < ts_to:
+        yield start, min(start + step, ts_to)
+        start += step
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Pull truck data from Wialon into SQLite.")
+    parser.add_argument("--since", default="30",
+                        help="days back (e.g. 30) or a date (YYYY-MM-DD). Default 30.")
+    args = parser.parse_args(argv)
+
     load_dotenv()
     token = os.environ.get("WIALON_TOKEN")
     if not token:
-        print("ERROR: WIALON_TOKEN is not set.")
-        print("  Copy .env.example to .env and paste your Wialon token.")
+        print("ERROR: WIALON_TOKEN is not set. Copy .env.example to .env and add your token.")
         return 1
 
     init_db(config.DB_PATH)
-    print(f"Database ready: {config.DB_PATH}")
-
     client = WialonClient(token, host=config.WIALON_HOST)
 
     try:
@@ -56,45 +78,60 @@ def main():
     except WialonError as e:
         print(f"Login failed: {e}")
         if e.code == 8:
-            print("  -> Token is invalid or expired. Generate a new one (see README).")
+            print("  -> Token is invalid or expired (see README to generate one).")
         return 1
-    print(f"Logged in (user id {client.user_id}, server time {client.server_time}).")
+
+    now = client.server_time or int(time.time())
+    ts_from = parse_since(args.since, now)
+    ts_to = now
 
     try:
         unit = client.find_unit(config.UNIT_NAME_MASK)
+        if not unit:
+            print(f"No unit matched mask {config.UNIT_NAME_MASK!r}. Check config.py.")
+            return 1
+        resource_id = client.find_resource_id()
+        if not resource_id:
+            print("No resource available to run reports under.")
+            return 1
     except WialonError as e:
-        print(f"Unit search failed: {e}")
+        print(f"Setup failed: {e}")
         if e.code == 7:
-            print("  -> Token scope is too narrow. It needs read access to the unit.")
+            print("  -> Token scope is too narrow (needs unit + report access).")
         return 1
 
-    if not unit:
-        print(f"No unit matched mask {config.UNIT_NAME_MASK!r}.")
-        print("  Check the unit's name in Wialon and adjust UNIT_NAME_MASK in config.py.")
-        return 1
+    unit_id = unit["id"]
+    fmt = lambda ts: datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%d")
+    print(f"Unit {unit_id} ({unit.get('nm')!r}); pulling {fmt(ts_from)} .. {fmt(ts_to)}")
 
-    print(f"Unit found: id={unit['id']} name={unit.get('nm')!r}")
+    con = sqlite3.connect(config.DB_PATH)
+    added = {"trips": 0, "fillings": 0, "eco": 0, "unit_state": 0}
+    status, detail = "ok", ""
+    try:
+        for w_from, w_to in windows(ts_from, ts_to):
+            added["trips"] += trips.fetch_and_store(client, con, unit_id, resource_id, w_from, w_to)
+            added["fillings"] += fillings.fetch_and_store(client, con, unit_id, resource_id, w_from, w_to)
+            added["eco"] += eco_events.fetch_and_store(client, con, unit_id, resource_id, w_from, w_to)
+        added["unit_state"] = unit_state.snapshot(con, unit)
+        con.commit()
+    except WialonError as e:
+        status, detail = "error", str(e)
+        con.rollback()
+        print(f"Ingestion error: {e}")
+    finally:
+        con.execute(
+            "INSERT OR REPLACE INTO ingestion_log "
+            "(run_ts, since_ts, until_ts, trips_added, fillings_added, eco_added, status, detail) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (int(time.time()), ts_from, ts_to, added["trips"], added["fillings"],
+             added["eco"], status, detail),
+        )
+        con.commit()
+        con.close()
 
-    pos = unit.get("pos") or {}
-    if pos:
-        # Wialon position: y=lat, x=lon, s=speed (km/h), t=message time.
-        print(f"  last position : lat={pos.get('y')}, lon={pos.get('x')}, "
-              f"speed={pos.get('s')} km/h, t={pos.get('t')}")
-    else:
-        print("  last position : (none reported yet)")
-
-    print(f"  odometer      : {unit.get('cnm')} km")
-    print(f"  engine hours  : {unit.get('cneh')} h")
-
-    # Scope probe: warn about anything the report layer will need that
-    # this token/device did not return.
-    missing = [name for name in ("pos", "cnm", "cneh") if not unit.get(name)]
-    if missing:
-        print(f"  NOTE: missing {missing} — token scope or device reporting may be limited.")
-    else:
-        print("  Scope OK: position + counters all present.")
-
-    return 0
+    print(f"Added: trips={added['trips']} fillings={added['fillings']} "
+          f"eco={added['eco']} unit_state={added['unit_state']}  status={status}")
+    return 0 if status == "ok" else 1
 
 
 if __name__ == "__main__":

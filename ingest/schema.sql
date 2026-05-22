@@ -28,7 +28,10 @@ CREATE TABLE IF NOT EXISTS unit_state (
     PRIMARY KEY (unit_id, ts)
 );
 
--- Trips from the tuned stock trip report.
+-- Trips from the tuned (unit-level) trip detector.
+-- Keyed on (unit_id, start_ts): a trip starts exactly once. The end and
+-- its derived fields are upserted, so an in-progress trip finalizes in
+-- place on a later run instead of duplicating.
 CREATE TABLE IF NOT EXISTS trips (
     unit_id       INTEGER NOT NULL,
     start_ts      INTEGER NOT NULL,
@@ -42,9 +45,8 @@ CREATE TABLE IF NOT EXISTS trips (
     avg_speed_kmh INTEGER,
     max_speed_kmh INTEGER,
     raw           TEXT,
-    PRIMARY KEY (unit_id, start_ts, end_ts)
+    PRIMARY KEY (unit_id, start_ts)
 );
-CREATE INDEX IF NOT EXISTS idx_trips_start ON trips (unit_id, start_ts);
 
 -- Fuel fill events.
 CREATE TABLE IF NOT EXISTS fillings (

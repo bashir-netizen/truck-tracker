@@ -17,6 +17,7 @@ Stage 1 implements: login, call, find_unit. Report helpers
 """
 
 import json
+import re
 import time
 
 import requests
@@ -100,6 +101,76 @@ class WialonClient:
         items = resp.get("items") or []
         return items[0] if items else None
 
+    def find_resource_id(self):
+        """Return the id of a resource we can run reports under, or None.
+
+        Inline report templates still execute "as" some resource; the
+        account's own resource is fine. Single-truck accounts have one.
+        """
+        params = {
+            "spec": {
+                "itemsType": "avl_resource",
+                "propName": "sys_name",
+                "propValueMask": "*",
+                "sortType": "sys_name",
+            },
+            "force": 1,
+            "flags": 1,  # base info is enough; we only need the id
+            "from": 0,
+            "to": 0,
+        }
+        resp = self.call("core/search_items", params)
+        items = resp.get("items") or []
+        return items[0]["id"] if items else None
+
+    def run_table_report(self, resource_id, unit_id, ts_from, ts_to, table_type, label, columns):
+        """Execute a one-table inline report and return its raw rows.
+
+        `columns` is a comma-separated list of Wialon column ids. Only one
+        report may exist per session, so we clean up before and after.
+        Returns a list of row dicts (each has `c` cells and `t1`/`t2`).
+        """
+        template = {
+            "id": 0,
+            "n": label,
+            "ct": "avl_unit",
+            "p": "{}",
+            "tbl": [{
+                "n": table_type,
+                "l": label,
+                "c": columns,
+                "cl": columns,
+                "cp": "",
+                "s": "[]",
+                "sl": "[]",
+                "sp": "",
+                "filter_order": [],
+                "p": "",
+                "sch": {"f1": 0, "f2": 0, "t1": 0, "t2": 0, "m": 0, "y": 0, "w": 0, "fl": 0},
+                "f": 0,
+            }],
+        }
+        self.call("report/cleanup_result", {})
+        try:
+            resp = self.call("report/exec_report", {
+                "reportResourceId": resource_id,
+                "reportTemplateId": 0,
+                "reportTemplate": template,
+                "reportObjectId": unit_id,
+                "reportObjectSecId": 0,
+                "interval": {"from": int(ts_from), "to": int(ts_to), "flags": 0},
+            })
+            tables = (resp.get("reportResult") or {}).get("tables") or []
+            if not tables:
+                return []
+            n_rows = tables[0].get("rows", 0)
+            if not n_rows:
+                return []
+            return self.call("report/get_result_rows",
+                             {"tableIndex": 0, "indexFrom": 0, "indexTo": n_rows})
+        finally:
+            self.call("report/cleanup_result", {})
+
     # -- transport ---------------------------------------------------------
 
     def _post(self, svc, params, with_sid):
@@ -136,3 +207,85 @@ class WialonClient:
             raise WialonError(error, svc)
 
         raise WialonError(last_error, svc)
+
+
+# --------------------------------------------------------------------------
+# Report cell helpers
+#
+# A report cell is either a plain string ("16.18 km", "-----", "0:31:13")
+# or a dict {"t": text, "v": value, "y": lat, "x": lon, "u": unit_id}.
+# Datetime cells carry `v` (epoch) and `y`/`x` (position at that moment);
+# numeric cells arrive as text with a unit suffix.
+# --------------------------------------------------------------------------
+
+# Wialon's placeholder for "no value".
+_NULLISH = {"", "-----"}
+
+
+def cell_text(cell):
+    """The display text of a cell, whether dict or plain string."""
+    if isinstance(cell, dict):
+        return cell.get("t")
+    return cell
+
+
+def cell_epoch(cell):
+    """Epoch seconds from a datetime cell, or None."""
+    if isinstance(cell, dict):
+        return cell.get("v")
+    return None
+
+
+def cell_xy(cell):
+    """(lat, lon) from a cell, or (None, None)."""
+    if isinstance(cell, dict):
+        return cell.get("y"), cell.get("x")
+    return None, None
+
+
+def num(cell):
+    """Leading number in a cell's text, or None.
+
+    "16.18 km" -> 16.18, "55 km/h" -> 55.0, "-----" -> None.
+    """
+    text = cell_text(cell)
+    if text is None or str(text).strip() in _NULLISH:
+        return None
+    s = str(text).strip().replace(",", "")
+    out, seen_dot = [], False
+    for ch in s:
+        if ch.isdigit():
+            out.append(ch)
+        elif ch == "." and not seen_dot:
+            out.append(ch)
+            seen_dot = True
+        elif ch == "-" and not out:
+            out.append(ch)
+        else:
+            break
+    try:
+        return float("".join(out)) if out and out != ["-"] else None
+    except ValueError:
+        return None
+
+
+def hms_to_seconds(cell):
+    """Duration text to seconds. Handles "H:MM:SS" and "D days H:MM:SS"."""
+    text = cell_text(cell)
+    if text is None or str(text).strip() in _NULLISH:
+        return None
+    s = str(text).strip()
+    days = 0
+    m = re.match(r"(\d+)\s*days?\s+(.*)", s)
+    if m:
+        days = int(m.group(1))
+        s = m.group(2).strip()
+    parts = s.split(":")
+    try:
+        nums = [int(p) for p in parts]
+    except ValueError:
+        return None
+    while len(nums) < 3:
+        nums.insert(0, 0)
+    h, mins, sec = nums[-3], nums[-2], nums[-1]
+    return days * 86400 + h * 3600 + mins * 60 + sec
