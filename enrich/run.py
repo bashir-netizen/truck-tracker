@@ -4,13 +4,23 @@ Rebuilds every derived table from the raw tables. Reads raw, writes only
 derived tables — never modifies raw rows. Run after ingestion:
 
     python -m enrich.run
+
+Derived tables are dropped and recreated from schema.sql at the start of each
+run, so schema changes always apply (the data is fully rebuildable). Raw tables
+are never touched.
 """
 
 import sqlite3
 import sys
+from pathlib import Path
 
 import config
-from enrich import anomalies, driver, maintenance, metrics, places
+from enrich import (anomalies, corridors, driver, journeys, maintenance,
+                    metrics, places)
+
+SCHEMA = (Path(__file__).resolve().parents[1] / "ingest" / "schema.sql").read_text()
+DERIVED = ["trip_metrics", "journeys", "corridors", "driver_score",
+           "service_status", "anomalies", "places"]
 
 
 def main():
@@ -23,7 +33,15 @@ def main():
             return 1
         unit_id = row[0]
 
+        # Refresh derived-table schema (safe: all rebuilt below).
+        for t in DERIVED:
+            con.execute(f"DROP TABLE IF EXISTS {t}")
+        con.executescript(SCHEMA)
+
+        n_journeys = journeys.rebuild(con, unit_id)
         n_places = places.rebuild(con, unit_id)
+        journeys.assign_places(con, unit_id)
+        n_corridors = corridors.rebuild(con, unit_id)
         n_metrics = metrics.rebuild(con, unit_id)
         n_driver = driver.rebuild(con, unit_id)
         n_services = maintenance.rebuild(con, unit_id)
@@ -32,8 +50,9 @@ def main():
     finally:
         con.close()
 
-    print(f"Enriched: places={n_places} trip_metrics={n_metrics} "
-          f"driver_weeks={n_driver} services={n_services} anomalies={n_anom}")
+    print(f"Enriched: journeys={n_journeys} corridors={n_corridors} places={n_places} "
+          f"trip_metrics={n_metrics} driver_weeks={n_driver} services={n_services} "
+          f"anomalies={n_anom}")
     return 0
 
 

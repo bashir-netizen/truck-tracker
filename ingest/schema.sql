@@ -142,12 +142,49 @@ CREATE TABLE IF NOT EXISTS ingestion_log (
 -- ========================================================================
 
 CREATE TABLE IF NOT EXISTS places (
-    place_id    INTEGER PRIMARY KEY,
-    label       TEXT,           -- from places.yaml, may be NULL
-    lat         REAL,           -- centroid
-    lon         REAL,
-    radius_m    INTEGER,
-    visit_count INTEGER
+    place_id           INTEGER PRIMARY KEY,
+    label              TEXT,        -- override (places.yaml) or auto from geocode
+    lat                REAL,        -- centroid
+    lon                REAL,
+    radius_m           INTEGER,
+    visit_count        INTEGER,
+    visit_time_total_s INTEGER      -- total dwell (parkings) at this place
+);
+
+-- Journeys: trip legs stitched across short gaps; the real A->B runs.
+CREATE TABLE IF NOT EXISTS journeys (
+    journey_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit_id         INTEGER NOT NULL,
+    start_ts        INTEGER NOT NULL,
+    end_ts          INTEGER,
+    origin_lat      REAL,
+    origin_lon      REAL,
+    dest_lat        REAL,
+    dest_lon        REAL,
+    origin_place_id INTEGER,
+    dest_place_id   INTEGER,
+    leg_count       INTEGER,
+    distance_m      INTEGER,
+    duration_s      INTEGER,
+    fuel_l          REAL,
+    l_per_100km     REAL,
+    is_local        INTEGER,        -- 1 = local/yard, 0 = route
+    UNIQUE (unit_id, start_ts)
+);
+
+-- Corridors: journeys aggregated by unordered place pair (route identity).
+CREATE TABLE IF NOT EXISTS corridors (
+    corridor_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    place_a_id       INTEGER,
+    place_b_id       INTEGER,
+    journey_count    INTEGER,
+    total_distance_m INTEGER,
+    total_duration_s INTEGER,
+    total_fuel_l     REAL,
+    avg_l_per_100km  REAL,
+    first_seen_ts    INTEGER,
+    last_seen_ts     INTEGER,
+    UNIQUE (place_a_id, place_b_id)
 );
 
 CREATE TABLE IF NOT EXISTS trip_metrics (

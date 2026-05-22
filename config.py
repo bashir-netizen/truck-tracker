@@ -37,6 +37,19 @@ TANK_CAPACITY_L = 550  # observed from fill data on the FAW 6x4
 DBSCAN_EPS_M = 100        # endpoints within this radius cluster into one place
 DBSCAN_MIN_SAMPLES = 3    # min visits to register a place
 
+# --- Journeys & places (route view) ---------------------------------------
+# A parking/gap at least this long ends one journey and starts the next.
+JOURNEY_SPLIT_HOURS = 3
+# A journey shorter than this (or returning to its origin) is "local", not a route.
+ROUTE_MIN_KM = 5
+# Significant-place clustering: town scale, and min_samples=1 so a
+# destination visited only once still becomes a place. Only journey endpoints
+# and parkings at least PLACE_MIN_DWELL_S long seed a place (keeps out the
+# many brief roadside halts).
+PLACE_EPS_M = 3000
+PLACE_MIN_SAMPLES = 1
+PLACE_MIN_DWELL_S = 1800
+
 # --- Anomaly thresholds (Stage 3) -----------------------------------------
 
 FUEL_DROP_PCT = 10          # level drop > this % between readings => possible theft

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 import config
-from enrich import anomalies, driver, maintenance, metrics, places
+from enrich import anomalies, corridors, driver, journeys, maintenance, metrics, places
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = (ROOT / "ingest" / "schema.sql").read_text()
@@ -44,19 +44,66 @@ def add_eco(con, ts, etype):
                 "VALUES (?,?,?,?,?,?,?,'{}')", (UNIT, ts, etype, 60, 1, A[0], A[1]))
 
 
+def add_parking(con, start_ts, end_ts, place, location):
+    con.execute(
+        "INSERT INTO parkings (unit_id,start_ts,end_ts,duration_s,lat,lon,location,raw) "
+        "VALUES (?,?,?,?,?,?,?,'{}')",
+        (UNIT, start_ts, end_ts, end_ts - start_ts, place[0], place[1], location))
+
+
+def add_place(con, pid, label, point):
+    con.execute(
+        "INSERT INTO places (place_id,label,lat,lon,radius_m,visit_count,visit_time_total_s) "
+        "VALUES (?,?,?,?,?,?,?)", (pid, label, point[0], point[1], 3000, 1, 0))
+
+
+# -- journeys --------------------------------------------------------------
+
+def test_journeys_stitch_and_split(con):
+    # two legs <3h apart = one journey; a >3h gap starts a second
+    add_trip(con, 0, 1000, A, B, 10000, 4)
+    add_trip(con, 1500, 3000, B, A, 10000, 4)            # gap 500s -> same journey
+    later = 3000 + config.JOURNEY_SPLIT_HOURS * 3600 + 60
+    add_trip(con, later, later + 1000, A, B, 8000, 3)    # >3h gap -> new journey
+    n = journeys.rebuild(con, UNIT)
+    assert n == 2
+    first = con.execute("SELECT leg_count, distance_m FROM journeys ORDER BY start_ts").fetchone()
+    assert first[0] == 2 and first[1] == 20000
+
+
 # -- places ----------------------------------------------------------------
 
-def test_places_cluster_repeated_endpoints(con):
-    for i in range(4):  # 4 trips A->B => 4 points at each => 2 clusters
-        add_trip(con, 1000 + i, 2000 + i, A, B, 80000, 30)
+def test_places_from_journeys_and_parkings(con):
+    add_trip(con, 0, 3600, A, B, 80000, 30)
+    journeys.rebuild(con, UNIT)
+    add_parking(con, 0, 7200, A, "Depot Rd, Athi River, Machakos")
+    add_parking(con, 9000, 16200, B, "Icd Road, Nairobi, South C Ward")
     n = places.rebuild(con, UNIT)
     assert n == 2
-    pls = places.load_places(con)
-    # every centroid is within a few metres of A or B
-    for p in pls:
-        near = min(places.haversine_m(p["lat"], p["lon"], *A),
-                   places.haversine_m(p["lat"], p["lon"], *B))
-        assert near < 50
+    labels = {p["label"] for p in places.load_places(con)}
+    assert labels == {"Athi River", "Nairobi"}
+
+
+def test_short_name():
+    assert places._short_name("Icd Road, Nairobi, South C Ward") == "Nairobi"
+    assert places._short_name("Marsabit-Moyale Road, Marsabit, X") == "Marsabit"
+    assert places._short_name("Solo") == "Solo"
+    assert places._short_name("") is None
+
+
+# -- corridors -------------------------------------------------------------
+
+def test_corridors_unordered_merge(con):
+    add_place(con, 0, "Nairobi", A)
+    add_place(con, 1, "Marsabit", B)
+    for sts, o, d in [(100, 0, 1), (10_000, 1, 0)]:  # A->B and B->A
+        con.execute(
+            "INSERT INTO journeys (unit_id,start_ts,end_ts,origin_place_id,dest_place_id,"
+            "distance_m,duration_s,fuel_l,is_local) VALUES (?,?,?,?,?,?,?,?,0)",
+            (UNIT, sts, sts + 1000, o, d, 500000, 36000, 150))
+    assert corridors.rebuild(con, UNIT) == 1
+    row = con.execute("SELECT journey_count, place_a_id, place_b_id FROM corridors").fetchone()
+    assert row[0] == 2 and row[1] == 0 and row[2] == 1
 
 
 # -- metrics ---------------------------------------------------------------
