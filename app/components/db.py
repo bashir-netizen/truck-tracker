@@ -17,6 +17,16 @@ import config
 DB_PATH = str(Path(config.DB_PATH))
 
 
+def _native(v):
+    """Coerce a numpy scalar (e.g. np.int64 from pandas) to a plain Python type.
+
+    Critical for bind parameters: SQLite gives numpy scalars BLOB affinity, so
+    `ts BETWEEN ? AND ?` with numpy params silently matches nothing. Native
+    int/float bind correctly.
+    """
+    return v.item() if hasattr(v, "item") else v
+
+
 def _mtime():
     return os.path.getmtime(DB_PATH) if os.path.exists(DB_PATH) else 0.0
 
@@ -33,14 +43,14 @@ def _run(sql, params, db_mtime):
 
 def q(sql, params=()):
     """Run a read-only query, returning a DataFrame (cached on DB mtime)."""
-    return _run(sql, tuple(params), _mtime())
+    return _run(sql, tuple(_native(p) for p in params), _mtime())
 
 
 def scalar(sql, params=(), default=None):
     df = q(sql, params)
     if df.empty or df.iloc[0, 0] is None:
         return default
-    return df.iloc[0, 0]
+    return _native(df.iloc[0, 0])
 
 
 def has_data():
