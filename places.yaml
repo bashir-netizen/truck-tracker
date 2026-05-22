@@ -1,0 +1,7 @@
+# Place label overrides. Each entry relabels the nearest detected place within
+# 300 m of these coordinates. Committed so the scheduled cloud job applies them.
+# After editing, re-run `python -m enrich.run` (or wait for the 3-hourly job).
+
+- label: Genwatt office (Athi River)
+  lat: -1.43647
+  lon: 36.96062
