@@ -26,6 +26,13 @@ theme.page_setup("Map")
 ROUTE_CLASSES = ["long_haul", "regional", "local"]
 FILTER_TO_CHAR = {"All": None, "Long haul": "long_haul", "Regional": "regional", "Local": "local"}
 
+# getattr fallbacks guard against Streamlit Cloud serving this page against a
+# stale (cached) theme module right after a deploy adds new attributes.
+CLASS_LABELS = getattr(theme, "CLASS_LABELS", {
+    "long_haul": "long haul", "regional": "regional", "local": "local", "yard": "yard"})
+CLASS_COLORS = getattr(theme, "CLASS_COLORS", {
+    "long_haul": "#C8501E", "regional": "#1f6feb", "local": "#3F7D58", "yard": "#8A857C"})
+
 
 def day_start(d):
     return int(datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp())
@@ -76,7 +83,7 @@ journeys = db.q(
 
 # --- trip-mix headline (all classes) --------------------------------------
 counts = journeys["journey_character"].value_counts().to_dict() if not journeys.empty else {}
-parts = [f"**{int(counts[c])}** {theme.CLASS_LABELS[c]}"
+parts = [f"**{int(counts[c])}** {CLASS_LABELS[c]}"
          for c in ["long_haul", "regional", "local", "yard"] if counts.get(c, 0)]
 st.markdown("This period: " + " · ".join(parts) if parts else "No trips this period.")
 
@@ -183,9 +190,9 @@ with ccols[0]:
                 hint=f"at KES {diesel}/L pump price")
 if any(v is not None for v in km_rates.values()):
     total, _, incl, excl = estimate.revenue_by_class(all_routes, km_rates)
-    foot = "Includes: " + ", ".join(theme.CLASS_LABELS[c] for c in incl)
+    foot = "Includes: " + ", ".join(CLASS_LABELS[c] for c in incl)
     if excl:
-        foot += " · Excludes: " + ", ".join(theme.CLASS_LABELS[c] for c in excl) + " (no rate)"
+        foot += " · Excludes: " + ", ".join(CLASS_LABELS[c] for c in excl) + " (no rate)"
     with ccols[1]:
         metric_card("Est. revenue", format_kes(total), hint=foot)
 
@@ -197,7 +204,7 @@ with st.expander("What-if rate calculator"):
     w = st.columns(3)
     inputs = {}
     for col, c in zip(w, ROUTE_CLASSES):
-        inputs[c] = col.number_input(f"{theme.CLASS_LABELS[c].title()} KES/km",
+        inputs[c] = col.number_input(f"{CLASS_LABELS[c].title()} KES/km",
                                      value=km_rates[c], min_value=0.0, step=5.0, key=f"wi_{c}")
     if st.button("Calculate"):
         total, breakdown, incl, _ = estimate.revenue_by_class(all_routes,
@@ -207,7 +214,7 @@ with st.expander("What-if rate calculator"):
         total, breakdown, incl = st.session_state["whatif"]
         for c in incl:
             b = breakdown[c]
-            st.markdown(f"{theme.CLASS_LABELS[c].title()}: {b['km']:,.0f} km × "
+            st.markdown(f"{CLASS_LABELS[c].title()}: {b['km']:,.0f} km × "
                         f"KES {b['rate']:,.0f} = **{format_kes(b['kes'])}**")
         st.markdown(f"**Total: {format_kes(total)}**")
         st.caption("What-if calculation. Not stored. Not an actual estimate.")
@@ -222,10 +229,10 @@ if not fj.empty:
 
     strip = fj.copy()
     strip["bucket"] = strip["start_ts"].apply(bucket)
-    strip["Class"] = strip["journey_character"].map(theme.CLASS_LABELS)
+    strip["Class"] = strip["journey_character"].map(CLASS_LABELS)
     g = strip.groupby(["bucket", "Class"]).size().reset_index(name="trips")
     fig = px.bar(g, x="bucket", y="trips", color="Class",
-                 color_discrete_map={theme.CLASS_LABELS[c]: theme.CLASS_COLORS[c] for c in theme.CLASS_LABELS})
+                 color_discrete_map={CLASS_LABELS[c]: CLASS_COLORS[c] for c in CLASS_LABELS})
     fig.update_layout(height=90, margin=dict(l=0, r=0, t=4, b=0), showlegend=False,
                       xaxis_title=None, yaxis_title=None, yaxis_visible=False,
                       paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -291,7 +298,7 @@ if not unlabeled.empty:
 # --- render the map into the top slot --------------------------------------
 with map_slot:
     if fj.empty:
-        empty_state(f"No {theme.CLASS_LABELS.get(char, 'route')} trips in this period.")
+        empty_state(f"No {CLASS_LABELS.get(char, 'route')} trips in this period.")
     else:
         layers = []
         if not corr_df.empty:
