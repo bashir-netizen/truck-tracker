@@ -15,6 +15,11 @@ from app.components import db, theme  # noqa: E402
 from app.components.empty_state import empty_state  # noqa: E402
 
 theme.page_setup("Map")
+
+# getattr default guards against Streamlit Cloud serving a stale (cached)
+# config module right after a redeploy adds a new attribute.
+STOP_MIN = getattr(config, "STOP_MIN_DISPLAY_S", 180)
+
 frm, to, label = theme.period_selector()
 theme.freshness_caption()
 theme.header("Map", f"{label} · routes driven, where it parked and stopped")
@@ -66,7 +71,7 @@ if not parks.empty:
 stps = db.q(
     "SELECT start_ts, duration_s, lat, lon, location FROM stops "
     "WHERE start_ts BETWEEN ? AND ? AND duration_s >= ? AND lat IS NOT NULL",
-    (frm, to, config.STOP_MIN_DISPLAY_S))
+    (frm, to, STOP_MIN))
 if not stps.empty:
     stps["name"] = (stps["location"].fillna("Stop") + " · stopped "
                     + stps["duration_s"].apply(theme.fmt_dur))
@@ -86,7 +91,7 @@ st.pydeck_chart(pdk.Deck(
 
 st.caption("Orange line: route driven. Blue circles: parkings (size = how long). "
            "Orange dots: stops over "
-           f"{config.STOP_MIN_DISPLAY_S // 60} min.")
+           f"{STOP_MIN // 60} min.")
 
 # --- parkings & stops tables ---------------------------------------------
 st.markdown('<hr/>', unsafe_allow_html=True)
@@ -107,7 +112,7 @@ else:
 st.subheader("Stops")
 if stps.empty:
     empty_state("No notable stops in this period",
-                f"Only stops longer than {config.STOP_MIN_DISPLAY_S // 60} minutes are shown.")
+                f"Only stops longer than {STOP_MIN // 60} minutes are shown.")
 else:
     sttab = pd.DataFrame({
         "Location": stps["location"],
