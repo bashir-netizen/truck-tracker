@@ -1,5 +1,6 @@
 """Map — the headline view: where the truck went this period (journeys)."""
 
+import json
 import pathlib
 import sys
 from collections import defaultdict
@@ -64,6 +65,12 @@ dwell = db.q(
     "FROM place_visits WHERE ts BETWEEN ? AND ? GROUP BY place_id", (from_ts, to_ts))
 D = {int(r.place_id): r for r in dwell.itertuples()}
 
+# real road paths cached on corridors (place_a<place_b)
+cpaths = {}
+for r in db.q("SELECT place_a_id, place_b_id, path_geojson FROM corridors").itertuples():
+    if r.path_geojson:
+        cpaths[(int(r.place_a_id), int(r.place_b_id))] = json.loads(r.path_geojson)
+
 # --- corridors in range (aggregate journeys by unordered place pair) ------
 agg = defaultdict(lambda: {"n": 0, "km": 0.0, "fuel": 0.0, "last": None})
 for j in journeys.itertuples():
@@ -88,7 +95,7 @@ for (a, b), g in agg.items():
         "A": P[a].label, "B": P[b].label, "journeys": g["n"],
         "km": round(g["km"]), "lpk": round(g["fuel"] / g["km"] * 100, 1) if g["km"] else None,
         "last": theme.fmt_dt(g["last"], with_time=False),
-        "src": [P[a].lon, P[a].lat], "dst": [P[b].lon, P[b].lat]})
+        "path": cpaths.get((a, b)) or [[P[a].lon, P[a].lat], [P[b].lon, P[b].lat]]})
 corr_df = pd.DataFrame(corr).sort_values(["journeys", "km"], ascending=False).reset_index(drop=True) \
     if corr else pd.DataFrame()
 
@@ -191,9 +198,9 @@ with map_slot:
         m["color"] = m.apply(line_color, axis=1)
         m["width"] = m.apply(lambda r: 8 if r["key"] == sel_corridor else r["width"], axis=1)
         layers.append(pdk.Layer(
-            "LineLayer", data=m, get_source_position="src", get_target_position="dst",
-            get_color="color", get_width="width", width_units="pixels",
-            width_min_pixels=2, width_max_pixels=8, pickable=True))
+            "PathLayer", data=m, get_path="path", get_color="color", get_width="width",
+            width_units="pixels", width_min_pixels=2, width_max_pixels=8,
+            pickable=True, cap_rounded=True, joint_rounded=True))
 
     if not places_df.empty:
         pl = places_df.copy()

@@ -193,6 +193,7 @@ CREATE TABLE IF NOT EXISTS corridors (
     avg_l_per_100km  REAL,
     first_seen_ts    INTEGER,
     last_seen_ts     INTEGER,
+    path_geojson     TEXT,           -- [[lon,lat],…] of the most recent journey
     UNIQUE (place_a_id, place_b_id)
 );
 

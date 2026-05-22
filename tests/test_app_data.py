@@ -46,6 +46,13 @@ def test_journeys_and_corridors_exist():
     assert db.scalar("SELECT COUNT(*) FROM corridors", default=0) >= 1
 
 
+def test_corridors_have_real_paths():
+    import json as _j
+    rows = db.q("SELECT path_geojson FROM corridors WHERE path_geojson IS NOT NULL")
+    assert not rows.empty
+    assert max(len(_j.loads(p)) for p in rows["path_geojson"]) > 10  # a road, not a line
+
+
 def test_shorter_window_is_a_subset():
     """A 24h window must hold no more trips than the full history (period works)."""
     to_ts = db.last_data_ts()

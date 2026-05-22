@@ -93,6 +93,13 @@ def test_short_name():
 
 # -- corridors -------------------------------------------------------------
 
+def test_rdp_collapses_straight_keeps_corner():
+    straight = [(36.0, -1.0), (36.001, -1.0), (36.002, -1.0), (36.010, -1.0)]
+    assert len(corridors._rdp(straight, 50.0)) == 2
+    corner = [(36.0, -1.0), (36.05, -1.0), (36.05, -1.05)]  # a right-angle turn
+    assert len(corridors._rdp(corner, 50.0)) == 3
+
+
 def test_corridors_unordered_merge(con):
     add_place(con, 0, "Nairobi", A)
     add_place(con, 1, "Marsabit", B)
