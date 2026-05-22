@@ -18,6 +18,12 @@ ACCENT = config.ACCENT_COLOR          # burnt orange, used sparingly
 ACCENT_RGB = [200, 80, 30]
 CORRIDOR_RGB = [31, 111, 235]         # muted blue for route lines (one colour)
 PLACE_RGB = [40, 40, 46]              # neutral dark for place bubbles
+
+# Journey character labels + colours (used by the trip-mix line and the strip).
+CLASS_LABELS = {"long_haul": "long haul", "regional": "regional",
+                "local": "local", "yard": "yard"}
+CLASS_COLORS = {"long_haul": "#C8501E", "regional": "#1f6feb",
+                "local": "#3F7D58", "yard": "#8A857C"}
 INK = "#1B1A17"                       # near-black text
 MUTED = "#8A857C"                     # secondary text
 HAIRLINE = "#E7E3DB"                  # borders / gridlines

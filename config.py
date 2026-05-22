@@ -101,6 +101,18 @@ DRIFT_MIN_WEEK_KM = 50   # don't judge a week's economy on too little driving
 # point. Drops the many redundant parked points; preserves road shape.
 TRACK_MIN_METERS = 25
 
+# --- Rates (billing) ------------------------------------------------------
+# The per-km rates MUST stay None until real Genwatt rates are known.
+# Placeholder or guessed values are NOT acceptable: the dashboard hides revenue
+# entirely until at least one km rate is set here. Only the diesel pump price
+# gets a real default — it is public information and easy to keep current.
+RATES = {
+    "long_haul_kes_per_km": None,
+    "regional_kes_per_km": None,
+    "local_kes_per_km": None,
+    "diesel_kes_per_l": 180,   # current Kenyan pump price; update as it changes
+}
+
 # --- Dashboard (Stage 4) --------------------------------------------------
 
 ACCENT_COLOR = "#C8501E"  # one warm accent; muted neutrals everywhere else
