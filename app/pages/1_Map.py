@@ -346,14 +346,8 @@ with map_slot:
                 "ScatterplotLayer", data=pl, get_position=["lon", "lat"], get_radius="radius",
                 get_fill_color="fill", radius_min_pixels=5, radius_max_pixels=30, pickable=True,
                 stroked=True, get_line_color=[255, 255, 255, 230], line_width_min_pixels=1))
-            # readable names for the most-significant places only (no boxes, no
-            # clutter): plain dark text on the light basemap.
-            top = pl.nlargest(6, "dwell_s")
-            layers.append(pdk.Layer(
-                "TextLayer", data=top, get_position=["lon", "lat"], get_text="label",
-                get_size=12, size_units="pixels", get_color=[15, 23, 42],
-                get_pixel_offset=[0, -16], get_text_anchor="'middle'",
-                get_alignment_baseline="'bottom'"))
+            # Place names show on hover (tooltip), not as on-map labels — keeps the
+            # map uncluttered at every zoom.
 
         if sel_corridor and not corr_df.empty:
             path = corr_df.loc[corr_df["key"] == sel_corridor, "path"].iloc[0]
