@@ -16,6 +16,8 @@ from app.components import db
 # -- palette ---------------------------------------------------------------
 ACCENT = config.ACCENT_COLOR          # burnt orange, used sparingly
 ACCENT_RGB = [200, 80, 30]
+CORRIDOR_RGB = [31, 111, 235]         # muted blue for route lines (one colour)
+PLACE_RGB = [40, 40, 46]              # neutral dark for place bubbles
 INK = "#1B1A17"                       # near-black text
 MUTED = "#8A857C"                     # secondary text
 HAIRLINE = "#E7E3DB"                  # borders / gridlines

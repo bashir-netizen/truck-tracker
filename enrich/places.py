@@ -71,11 +71,11 @@ def rebuild(con, unit_id):
             if la is not None and lo is not None:
                 points.append((la, lo))
     parkings = con.execute(
-        "SELECT lat, lon, duration_s, location FROM parkings "
+        "SELECT lat, lon, duration_s, location, start_ts FROM parkings "
         "WHERE unit_id=? AND lat IS NOT NULL", (unit_id,)).fetchall()
     # Only meaningful dwells seed a place; brief halts still count toward a
     # place's dwell total below, but don't create their own place.
-    points.extend((la, lo) for la, lo, dur, _ in parkings
+    points.extend((la, lo) for la, lo, dur, _loc, _ts in parkings
                   if (dur or 0) >= config.PLACE_MIN_DWELL_S)
 
     if not points:
@@ -98,7 +98,7 @@ def rebuild(con, unit_id):
 
         # dwell, visit count, and a name from parkings inside this place
         dwell, visits, name, name_d = 0, 0, None, float("inf")
-        for la, lo, dur, loc in parkings:
+        for la, lo, dur, loc, _ts in parkings:
             d = haversine_m(clat, clon, la, lo)
             if d <= radius:
                 dwell += dur or 0
@@ -114,6 +114,18 @@ def rebuild(con, unit_id):
     con.executemany(
         "INSERT INTO places (place_id, label, lat, lon, radius_m, visit_count, "
         "visit_time_total_s) VALUES (?,?,?,?,?,?,?)", rows)
+
+    # Map each parking to its nearest place so the dashboard can sum in-range
+    # dwell with plain SQL.
+    pls = load_places(con)
+    visits_rows = []
+    for la, lo, dur, _loc, ts in parkings:
+        pid = nearest_place_id(pls, la, lo)
+        if pid is not None and ts is not None:
+            visits_rows.append((pid, ts, dur or 0))
+    con.executemany(
+        "INSERT OR IGNORE INTO place_visits (place_id, ts, duration_s) VALUES (?,?,?)",
+        visits_rows)
     return len(rows)
 
 

@@ -172,6 +172,15 @@ CREATE TABLE IF NOT EXISTS journeys (
     UNIQUE (unit_id, start_ts)
 );
 
+-- Each parking mapped to its place, so the dashboard can sum in-range dwell
+-- with plain SQL (no geo math in the read layer).
+CREATE TABLE IF NOT EXISTS place_visits (
+    place_id   INTEGER NOT NULL,
+    ts         INTEGER NOT NULL,
+    duration_s INTEGER,
+    PRIMARY KEY (place_id, ts)
+);
+
 -- Corridors: journeys aggregated by unordered place pair (route identity).
 CREATE TABLE IF NOT EXISTS corridors (
     corridor_id      INTEGER PRIMARY KEY AUTOINCREMENT,

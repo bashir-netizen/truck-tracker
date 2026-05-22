@@ -20,7 +20,7 @@ from enrich import (anomalies, corridors, driver, journeys, maintenance,
 
 SCHEMA = (Path(__file__).resolve().parents[1] / "ingest" / "schema.sql").read_text()
 DERIVED = ["trip_metrics", "journeys", "corridors", "driver_score",
-           "service_status", "anomalies", "places"]
+           "service_status", "anomalies", "places", "place_visits"]
 
 
 def main():
