@@ -61,6 +61,15 @@ ECO_WEIGHTS = {
     "idling":       0.5,
 }
 
+# Score = 100 - (weighted events per 100 km) * this scale, clamped to 0..100.
+SCORE_PENALTY_SCALE = 2.0
+
+# L/100km is meaningless on near-zero-distance maneuvers; only compute it
+# (and judge drift) for trips at least this long.
+MIN_ECONOMY_KM = 2
+DRIFT_MIN_TRIP_KM = 5
+DRIFT_MIN_WEEK_KM = 50   # don't judge a week's economy on too little driving
+
 # --- Dashboard (Stage 4) --------------------------------------------------
 
 ACCENT_COLOR = "#C8501E"  # one warm accent; muted neutrals everywhere else

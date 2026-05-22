@@ -10,7 +10,7 @@ from ingest import wialon
 
 TABLE_TYPE = "unit_trips"
 LABEL = "Trips"
-COLUMNS = "time_begin,time_end,duration,mileage,avg_speed,max_speed"
+COLUMNS = "time_begin,time_end,duration,mileage,avg_speed,max_speed,fuel_consumption_all"
 
 
 def parse_row(unit_id, row):
@@ -31,12 +31,14 @@ def parse_row(unit_id, row):
     distance_m = int(round(mileage_km * 1000)) if mileage_km is not None else None
     avg_speed = wialon.num(c[4])
     max_speed = wialon.num(c[5])
+    consumed_l = wialon.num(c[6]) if len(c) > 6 else None
     return (
         unit_id, int(start_ts), int(end_ts),
         start_lat, start_lon, end_lat, end_lon,
         distance_m, duration_s,
         int(round(avg_speed)) if avg_speed is not None else None,
         int(round(max_speed)) if max_speed is not None else None,
+        consumed_l,
         json.dumps(row, ensure_ascii=False),
     )
 
@@ -44,13 +46,13 @@ def parse_row(unit_id, row):
 UPSERT = (
     "INSERT INTO trips "
     "(unit_id, start_ts, end_ts, start_lat, start_lon, end_lat, end_lon, "
-    " distance_m, duration_s, avg_speed_kmh, max_speed_kmh, raw) "
-    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
+    " distance_m, duration_s, avg_speed_kmh, max_speed_kmh, consumed_l, raw) "
+    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) "
     "ON CONFLICT(unit_id, start_ts) DO UPDATE SET "
     "  end_ts=excluded.end_ts, end_lat=excluded.end_lat, end_lon=excluded.end_lon, "
     "  distance_m=excluded.distance_m, duration_s=excluded.duration_s, "
     "  avg_speed_kmh=excluded.avg_speed_kmh, max_speed_kmh=excluded.max_speed_kmh, "
-    "  raw=excluded.raw "
+    "  consumed_l=excluded.consumed_l, raw=excluded.raw "
     "WHERE excluded.end_ts > trips.end_ts"  # only finalize a still-open trip
 )
 

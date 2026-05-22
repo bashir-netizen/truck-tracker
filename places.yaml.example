@@ -1,0 +1,11 @@
+# Optional human labels for clustered places. Copy to places.yaml and edit.
+# Each cluster centroid adopts the label of the nearest entry within 300 m.
+# Find coordinates from the Map page or the trips table.
+
+- label: Depot (Athi River)
+  lat: -1.4194
+  lon: 36.9546
+
+- label: ICD Nairobi
+  lat: -1.3329
+  lon: 36.8722

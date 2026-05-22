@@ -1,0 +1,16 @@
+# Last-service baselines per service type. Copy to services.yaml and update
+# after each service. Absent => assumed serviced from new (0 km / 0 h).
+# Keys must match config.MAINTENANCE_INTERVALS.
+
+engine_oil:
+  last_service_km: 0
+  last_service_engine_h: 0
+
+transmission:
+  last_service_km: 0
+
+air_filter:
+  last_service_km: 0
+
+major_service:
+  last_service_km: 0

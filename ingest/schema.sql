@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS trips (
     duration_s    INTEGER,
     avg_speed_kmh INTEGER,
     max_speed_kmh INTEGER,
+    consumed_l    REAL,
     raw           TEXT,
     PRIMARY KEY (unit_id, start_ts)
 );

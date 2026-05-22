@@ -80,8 +80,9 @@ def test_parse_trip_row_shapes():
     row = load("trips_rows")[0]
     t = trips.parse_row(UNIT_ID, row)
     assert t is not None
-    unit_id, start_ts, end_ts, slat, slon, elat, elon, dist, dur, avg, mx, raw = t
+    unit_id, start_ts, end_ts, slat, slon, elat, elon, dist, dur, avg, mx, consumed, raw = t
     assert unit_id == UNIT_ID
+    assert consumed is None or isinstance(consumed, float)
     assert isinstance(start_ts, int) and isinstance(end_ts, int) and end_ts >= start_ts
     assert isinstance(slat, float) and isinstance(slon, float)
     assert dist is None or isinstance(dist, int)
