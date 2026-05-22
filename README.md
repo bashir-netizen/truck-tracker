@@ -58,4 +58,13 @@ See `CLAUDE.md` for the architecture rules and conventions.
 
 ## Status
 
-Stage 1 (scaffolding + connection proof) — in progress.
+- **Stage 1 — Scaffolding + connection proof** ✓
+- **Stage 2 — Ingestion** (trips, fillings, eco events, unit_state; idempotent, `--since`) ✓
+- **Stage 3 — Enrichment** (places, per-trip metrics, driver score, maintenance, anomalies) ✓
+- **Stage 4 — Dashboard** (overview + 7 pages, read-only, mobile-friendly) ✓
+- **Stage 5 — Automation** (GitHub Actions every 3h commits the updated DB) ✓
+  - Deferred: weekly summary email (needs SMTP secrets) and PDF audit export
+    (the CSV ledger already covers line-by-line verification).
+- **Stage 6 — Billing** — deferred until Genwatt rates are known.
+
+Run the dashboard locally with `streamlit run app/main.py` after an ingest + enrich.

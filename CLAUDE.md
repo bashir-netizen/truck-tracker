@@ -69,12 +69,12 @@ alternative.
 
 ## Build stages (gated — each ends in a working commit)
 
-1. Scaffolding + connection proof  ← (current)
-2. Pull real data (30 days), idempotent, `--since` backfill
-3. Enrichment (places, metrics, driver score, maintenance)
-4. Dashboard (all pages, polished, mobile-usable)
-5. Automation (GitHub Actions every 3h; weekly email; audit PDF)
-6. Billing (only when Genwatt rates are known) — isolated in `billing/`
+1. Scaffolding + connection proof ✓
+2. Pull real data (30 days), idempotent, `--since` backfill ✓
+3. Enrichment (places, metrics, driver score, maintenance, anomalies) ✓
+4. Dashboard (all pages, polished, mobile-usable) ✓
+5. Automation (GitHub Actions every 3h) ✓ — weekly email + audit PDF deferred
+6. Billing (only when Genwatt rates are known) — isolated in `billing/`  ← (next)
 
 ## Frontend conventions (Stage 4)
 
