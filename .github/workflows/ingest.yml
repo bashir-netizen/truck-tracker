@@ -1,0 +1,49 @@
+name: Ingest
+
+# Pulls fresh data from Wialon, enriches it, and commits the updated
+# SQLite database. The token comes from the WIALON_TOKEN repo secret.
+# Note: no untrusted event input is used in any run: step.
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"   # every 3 hours (UTC; GitHub cron is best-effort)
+  workflow_dispatch: {}       # allow manual runs
+
+permissions:
+  contents: write             # to commit the updated database
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Ingest and enrich
+        env:
+          WIALON_TOKEN: ${{ secrets.WIALON_TOKEN }}
+        run: |
+          python -m ingest.run
+          python -m enrich.run
+
+      - name: Commit updated database
+        run: |
+          if git status --porcelain data/truck.db | grep -q .; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add data/truck.db
+            git commit -m "Automated ingest $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          else
+            echo "No database changes to commit."
+          fi
