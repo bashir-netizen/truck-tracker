@@ -84,6 +84,17 @@ def test_places_from_journeys_and_parkings(con):
     assert labels == {"Athi River", "Nairobi"}
 
 
+def test_needs_label_flag(con):
+    add_trip(con, 0, 3600, A, B, 80000, 30)
+    journeys.rebuild(con, UNIT)
+    add_parking(con, 0, 7200, A, "Depot, Athi River, Machakos")   # clean -> Athi River
+    add_parking(con, 9000, 16200, B, "17 km from Nowhere")        # weak auto-name
+    places.rebuild(con, UNIT)
+    flags = dict(con.execute("SELECT label, needs_label FROM places"))
+    assert flags.get("Athi River") == 0
+    assert flags.get("17 km from Nowhere") == 1
+
+
 def test_short_name():
     assert places._short_name("Icd Road, Nairobi, South C Ward") == "Nairobi"
     assert places._short_name("Marsabit-Moyale Road, Marsabit, X") == "Marsabit"

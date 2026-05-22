@@ -46,7 +46,7 @@ ROUTE_MIN_KM = 5
 # destination visited only once still becomes a place. Only journey endpoints
 # and parkings at least PLACE_MIN_DWELL_S long seed a place (keeps out the
 # many brief roadside halts).
-PLACE_EPS_M = 3000
+PLACE_EPS_M = 800
 PLACE_MIN_SAMPLES = 1
 PLACE_MIN_DWELL_S = 1800
 

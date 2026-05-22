@@ -8,6 +8,7 @@ Also records total dwell time per place. Raw rows untouched.
 """
 
 import math
+import re
 from pathlib import Path
 
 import numpy as np
@@ -106,14 +107,17 @@ def rebuild(con, unit_id):
                 if loc and d < name_d:
                     name, name_d = loc, d
 
-        label = (_match_label(yaml_labels, clat, clon) or _short_name(name)
-                 or f"Place near {clat:.3f}, {clon:.3f}")
-        rows.append((place_id, label, clat, clon, int(round(radius)), visits, int(dwell)))
+        override = _match_label(yaml_labels, clat, clon)
+        label = override or _short_name(name) or f"Place near {clat:.3f}, {clon:.3f}"
+        weak = override is None and bool(
+            re.match(r"^(Place near |\d+(\.\d+)? km from )", label))
+        rows.append((place_id, label, clat, clon, int(round(radius)), visits,
+                     int(dwell), 1 if weak else 0))
         place_id += 1
 
     con.executemany(
         "INSERT INTO places (place_id, label, lat, lon, radius_m, visit_count, "
-        "visit_time_total_s) VALUES (?,?,?,?,?,?,?)", rows)
+        "visit_time_total_s, needs_label) VALUES (?,?,?,?,?,?,?,?)", rows)
 
     # Map each parking to its nearest place so the dashboard can sum in-range
     # dwell with plain SQL.

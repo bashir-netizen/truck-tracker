@@ -148,7 +148,8 @@ CREATE TABLE IF NOT EXISTS places (
     lon                REAL,
     radius_m           INTEGER,
     visit_count        INTEGER,
-    visit_time_total_s INTEGER      -- total dwell (parkings) at this place
+    visit_time_total_s INTEGER,     -- total dwell (parkings) at this place
+    needs_label        INTEGER      -- 1 = weak auto-name, owner should label it
 );
 
 -- Journeys: trip legs stitched across short gaps; the real A->B runs.
