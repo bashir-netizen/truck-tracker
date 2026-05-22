@@ -1,5 +1,6 @@
 """Map — the headline view: where the truck went and what kind of work it did."""
 
+import importlib
 import json
 import math
 import pathlib
@@ -21,6 +22,12 @@ from app.components.empty_state import empty_state  # noqa: E402
 from app.components.format import format_kes, relative_day  # noqa: E402
 from app.components.metric_card import metric_card  # noqa: E402
 from billing import estimate  # noqa: E402
+
+# Streamlit Cloud can serve a page against a stale, cached config/theme module
+# right after a deploy that adds new constants. Re-read both from disk so any
+# newly-added attribute (RATES, CLASS_LABELS, …) is always present.
+importlib.reload(config)
+importlib.reload(theme)
 
 theme.page_setup("Map")
 ROUTE_CLASSES = ["long_haul", "regional", "local"]
