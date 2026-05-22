@@ -18,6 +18,10 @@ WIALON_HOST = "https://hst-api.wialon.eu"
 # "KDX 415X" -> "*KDX*" is enough while there is a single truck.
 UNIT_NAME_MASK = "*KDX*"
 
+# Display name + vehicle description for the dashboard header.
+UNIT_DISPLAY_NAME = "KDX 415X"
+UNIT_DESCRIPTION = "FAW 6x4 · Teltonika FMB920"
+
 # --- Storage --------------------------------------------------------------
 
 # SQLite file. Committed to the repo while single-truck and small;
