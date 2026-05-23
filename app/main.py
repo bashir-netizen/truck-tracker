@@ -2,6 +2,7 @@
 
 import pathlib
 import sys
+from collections import Counter
 from datetime import datetime, timezone
 
 ROOT = next(p for p in pathlib.Path(__file__).resolve().parents if (p / "config.py").exists())
@@ -14,8 +15,8 @@ import streamlit as st  # noqa: E402
 import streamlit.components.v1 as components  # noqa: E402
 
 import config  # noqa: E402
-from app.components import (db, destination_row, hero_summary, places_meta,  # noqa: E402
-                            status_panel, status_strip, theme, thumbnail_map, trip_mix_line)
+from app.components import (db, hero_summary, journey_row, status_panel,  # noqa: E402
+                            status_strip, theme, thumbnail_map, trip_mix_line)
 from app.components.empty_state import empty_state  # noqa: E402
 from app.components.format import format_kes, relative_day  # noqa: E402
 from app.components.metric_card import metric_card  # noqa: E402
@@ -141,70 +142,93 @@ with c3:
                 icon="activity", delta_text=f"{util:.0f}% utilization", delta_direction="flat",
                 source=f"{active_days} active · {period_days - active_days} idle days")
 
-# === Section 4 — Geography ===============================================
+# === Section 4 — Geography (round trips) =================================
 st.markdown('<div style="height:1.8rem"></div>', unsafe_allow_html=True)
 st.markdown('<div class="tt-h2">Where it went</div>', unsafe_allow_html=True)
-trip_mix_line.render(mix)
 
-# Destinations = journey endpoints (origin/dest), named (needs_label=0). Mid-route
-# transit stops aren't endpoints, so they drop out naturally.
-endpoints, ep_class, origin_n = set(), {}, {}
-for r in db.q("SELECT origin_place_id o, dest_place_id d, journey_character c FROM journeys "
-              "WHERE start_ts BETWEEN ? AND ?", (frm, to)).itertuples():
-    if r.o is not None and r.o == r.o:
-        origin_n[int(r.o)] = origin_n.get(int(r.o), 0) + 1
-    for pid in (r.o, r.d):
-        if pid is not None and pid == pid:
-            pid = int(pid)
-            endpoints.add(pid)
-            if RANK.get(r.c, 0) >= RANK.get(ep_class.get(pid), -1):
-                ep_class[pid] = r.c
-NAMED = {int(x.place_id) for x in db.q("SELECT place_id FROM places WHERE needs_label=0").itertuples()}
-named_eps = endpoints & NAMED
-depot_lbls = places_meta.depot_labels()
-fallback_depot = max(origin_n, key=origin_n.get) if origin_n else None  # secondary to flags
+depot_ids = {int(r.place_id) for r in db.q("SELECT place_id FROM places WHERE type='depot'").itertuples()}
+depots = [P.get(i, "—") for i in depot_ids]
+rts = db.q("SELECT primary_destination_name dest, journey_class cls, total_distance_km km, "
+           "total_duration_s dur, via_places via, return_via_places rvia, end_ts "
+           "FROM round_trips WHERE start_ts BETWEEN ? AND ? ORDER BY start_ts", (frm, to))
+last_return = int(rts["end_ts"].max()) if not rts.empty else 0
 
-
-def _tag(pid):
-    if P.get(pid) in depot_lbls or pid == fallback_depot:
-        return "depot"
-    c = ep_class.get(pid)
-    return f"{CLASS_LABELS.get(c, 'transit')} destination" if c else "transit"
-
-
-vis = db.q("SELECT place_id, COUNT(*) visits, MAX(ts) last_ts FROM place_visits "
-           "WHERE ts BETWEEN ? AND ? GROUP BY place_id", (frm, to))
-dest_rows = sorted((r for r in vis.itertuples() if int(r.place_id) in named_eps),
-                   key=lambda r: (int(r.visits or 0), int(r.last_ts or 0)), reverse=True)
-first_ever = {int(x.place_id): int(x.first) for x in db.q(
-    "SELECT place_id, MIN(ts) first FROM place_visits GROUP BY place_id").itertuples()}
-n_transit = sum(1 for r in vis.itertuples() if int(r.place_id) not in named_eps)
 gcol, mcol = st.columns([3, 2])
 with gcol:
-    if not dest_rows:
-        empty_state("No named destinations this period")
-    for r in dest_rows[:5]:
-        pid = int(r.place_id)
-        destination_row.render(P.get(pid, "—"), _tag(pid), int(r.visits or 0), int(r.last_ts or 0))
-    if n_transit:
-        st.markdown(f'<div class="tt-small" style="margin-top:.5rem">{n_transit} transit '
-                    f'stop{"s" if n_transit != 1 else ""} not shown</div>', unsafe_allow_html=True)
-        st.page_link("pages/1_Map.py", label="Open full map →")
-    # "New" is only meaningful with history before the period; otherwise every place
-    # looks new (the data is younger than the window) — so we stay quiet, like deltas.
-    has_prior = (db.scalar("SELECT COUNT(*) FROM place_visits WHERE ts < ?", (frm,), 0) or 0) > 0
-    if has_prior:
-        new_named = sorted({P.get(int(r.place_id), "—") for r in dest_rows
-                            if first_ever.get(int(r.place_id), 0) >= frm})
-        msg = (f'<b>New this period:</b> {", ".join(new_named)}' if new_named
-               else "All named places this period were familiar.")
-        st.markdown(f'<div class="tt-small" style="margin-top:.4rem">{msg}</div>',
+    if depots:
+        ret = f" — last returned {relative_day(last_return)}" if last_return else ""
+        st.markdown(f'<div class="tt-small" style="margin-bottom:.5rem"><b>Home base:</b> '
+                    f'{", ".join(depots)}{ret}</div>', unsafe_allow_html=True)
+    trip_mix_line.render(mix)
+
+    if rts.empty:
+        empty_state("No completed round trips this period")
+    else:
+        groups = {}
+        for r in rts.itertuples():
+            if r.cls in ("long_haul", "regional"):
+                key, title = (r.dest or "—"), f"{r.dest or '—'} run"
+            elif r.cls == "local":
+                key, title = "__local__", None
+            else:
+                key, title = "__yard__", "Yard movements"
+            g = groups.setdefault(key, {"title": title, "cls": r.cls, "count": 0, "last": 0,
+                                        "km": 0.0, "dur": 0, "via": [], "rvia": [], "dests": []})
+            g["count"] += 1
+            g["last"] = max(g["last"], int(r.end_ts))
+            g["km"] += r.km or 0
+            g["dur"] += int(r.dur or 0)
+            g["via"] += json.loads(r.via)
+            g["rvia"] += json.loads(r.rvia)
+            g["dests"].append(r.dest)
+            if RANK.get(r.cls, 0) > RANK.get(g["cls"], 0):
+                g["cls"] = r.cls
+        if "__local__" in groups:
+            gl = groups["__local__"]
+            common = Counter(d for d in gl["dests"] if d).most_common(1)
+            gl["title"] = f"Local {common[0][0]} work" if common else "Local work"
+        for g in sorted(groups.values(), key=lambda x: (RANK.get(x["cls"], 0), x["count"]),
+                        reverse=True):
+            via, rvia = list(dict.fromkeys(g["via"])), list(dict.fromkeys(g["rvia"]))
+            if g["cls"] in ("long_haul", "regional"):
+                bits = []
+                if via:
+                    bits.append("via " + ", ".join(via) + " (out)")
+                if rvia:
+                    bits.append(", ".join(rvia) + " (return)")
+                context = " · ".join(bits) or "out and back"
+            elif g["cls"] == "local":
+                context = "Around " + g["title"].replace("Local ", "").replace(" work", "")
+            else:
+                context = "Within the yard"
+            journey_row.render(g["title"], CLASS_LABELS.get(g["cls"], g["cls"]), g["count"],
+                               context, relative_day(g["last"]), g["km"] / g["count"],
+                               theme.fmt_dur(g["dur"] // g["count"]))
+
+    # currently out (left a depot, not yet returned)
+    openj = db.q("SELECT dest_place_id, start_ts FROM journeys WHERE start_ts > ? "
+                 "AND start_ts BETWEEN ? AND ? ORDER BY start_ts", (last_return, frm, to))
+    if not openj.empty:
+        d_last = openj.iloc[-1]["dest_place_id"]
+        if d_last == d_last and int(d_last) not in depot_ids:   # not NaN, not a depot
+            st.markdown('<div class="tt-small" style="margin-top:.5rem;color:var(--accent)">'
+                        f'<b>Currently out:</b> at {P.get(int(d_last), "—")} since '
+                        f'{relative_day(int(openj.iloc[0]["start_ts"]))}</div>',
+                        unsafe_allow_html=True)
+
+    n_hidden = db.scalar(
+        "SELECT COUNT(DISTINCT pv.place_id) FROM place_visits pv JOIN places p "
+        "ON p.place_id=pv.place_id WHERE pv.ts BETWEEN ? AND ? "
+        "AND (p.needs_label=1 OR p.type='transit')", (frm, to), 0) or 0
+    if n_hidden:
+        st.markdown(f'<div class="tt-small" style="margin-top:.5rem">{n_hidden} unlabeled or '
+                    f'transit stop{"s" if n_hidden != 1 else ""} not shown</div>',
                     unsafe_allow_html=True)
+        st.page_link("pages/1_Map.py", label="Open full map →")
 with mcol:
     corr = [json.loads(r.path_geojson) for r in db.q(
         "SELECT path_geojson FROM corridors").itertuples() if r.path_geojson]
-    pts = [(P_lon, P_lat) for P_lon, P_lat in db.q(
-        "SELECT lon, lat FROM places").itertuples(index=False)]
+    pts = [(lon, lat) for lon, lat in db.q("SELECT lon, lat FROM places").itertuples(index=False)]
     thumbnail_map.render(corr, pts, height=210)
 
 # === Section 5 — Cost & value ===========================================

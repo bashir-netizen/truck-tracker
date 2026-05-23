@@ -37,13 +37,25 @@ def _load_labels():
     return []
 
 
-def _match_label(labels, lat, lon):
+def _match_entry(labels, lat, lon):
+    """Nearest places.yaml entry within LABEL_MAX_M, or None."""
     best, best_d = None, float("inf")
     for entry in labels:
         d = haversine_m(lat, lon, entry["lat"], entry["lon"])
         if d < best_d:
             best, best_d = entry, d
-    return best["label"] if best and best_d <= LABEL_MAX_M else None
+    return best if best and best_d <= LABEL_MAX_M else None
+
+
+def _entry_type(entry):
+    """Place type from a yaml entry: explicit `type`, else depot/home flag, else destination."""
+    if not entry:
+        return "destination"
+    if entry.get("type"):
+        return entry["type"]
+    if entry.get("depot") or entry.get("home"):
+        return "depot"
+    return "destination"
 
 
 def _short_name(location):
@@ -107,17 +119,18 @@ def rebuild(con, unit_id):
                 if loc and d < name_d:
                     name, name_d = loc, d
 
-        override = _match_label(yaml_labels, clat, clon)
+        entry = _match_entry(yaml_labels, clat, clon)
+        override = entry["label"] if entry else None
         label = override or _short_name(name) or f"Place near {clat:.3f}, {clon:.3f}"
         weak = override is None and bool(
             re.match(r"^(Place near |\d+(\.\d+)? km from )", label))
         rows.append((place_id, label, clat, clon, int(round(radius)), visits,
-                     int(dwell), 1 if weak else 0))
+                     int(dwell), 1 if weak else 0, _entry_type(entry)))
         place_id += 1
 
     con.executemany(
         "INSERT INTO places (place_id, label, lat, lon, radius_m, visit_count, "
-        "visit_time_total_s, needs_label) VALUES (?,?,?,?,?,?,?,?)", rows)
+        "visit_time_total_s, needs_label, type) VALUES (?,?,?,?,?,?,?,?,?)", rows)
 
     # Map each parking to its nearest place so the dashboard can sum in-range
     # dwell with plain SQL.

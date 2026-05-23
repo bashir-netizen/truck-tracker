@@ -34,6 +34,30 @@ if journeys.empty:
     empty_state("No journeys in this period", "Pick a wider period in the sidebar.")
     st.stop()
 
+# Round trips (jobs) — the owner's unit of work, above the per-journey ledger.
+import json as _json  # noqa: E402
+
+rt = db.q("SELECT start_ts, end_ts, primary_destination_name dest, journey_class cls, "
+          "total_distance_km km, total_duration_s dur, constituent_journey_ids cj "
+          "FROM round_trips WHERE start_ts BETWEEN ? AND ? ORDER BY start_ts DESC", (frm, to))
+if not rt.empty:
+    st.subheader("Round trips (jobs)")
+    rtl = pd.DataFrame({
+        "Start": pd.to_datetime(rt["start_ts"], unit="s", utc=True),
+        "End": pd.to_datetime(rt["end_ts"], unit="s", utc=True),
+        "Destination": rt["dest"],
+        "Class": rt["cls"],
+        "Distance (km)": rt["km"].round(0),
+        "Duration (h)": (rt["dur"] / 3600).round(1),
+        "Trips": rt["cj"].map(lambda s: len(_json.loads(s))),
+    })
+    st.dataframe(rtl, hide_index=True, width="stretch", column_config={
+        "Start": st.column_config.DatetimeColumn("Start", format="DD MMM YYYY, HH:mm"),
+        "End": st.column_config.DatetimeColumn("End", format="DD MMM YYYY, HH:mm")})
+    st.download_button("Download round-trips CSV", data=rtl.to_csv(index=False).encode("utf-8"),
+                       file_name=fname("round-trips"), mime="text/csv")
+    st.markdown('<hr/>', unsafe_allow_html=True)
+
 
 def lbl(pid):
     return P.get(int(pid), "—") if not pd.isna(pid) else "—"

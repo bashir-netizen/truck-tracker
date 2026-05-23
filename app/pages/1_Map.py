@@ -134,7 +134,7 @@ theme.freshness_caption()
 theme.header("Map", f"{frm_d:%d %b} – {to_d:%d %b %Y} · every trip, with events and playback")
 
 # --- places ---------------------------------------------------------------
-places = db.q("SELECT place_id, label, lat, lon, radius_m, needs_label FROM places")
+places = db.q("SELECT place_id, label, lat, lon, radius_m, needs_label, type FROM places")
 if places.empty:
     empty_state("No places yet",
                 "Run <code>python -m enrich.run</code> to populate the map.")
@@ -252,7 +252,7 @@ dwell = db.q("SELECT place_id, SUM(duration_s) dwell, COUNT(*) visits, MAX(ts) l
 places_df = pd.DataFrame([
     {"place_id": int(r.place_id), "label": P[int(r.place_id)].label, "lat": P[int(r.place_id)].lat,
      "lon": P[int(r.place_id)].lon, "dwell_s": int(r.dwell or 0), "visits": int(r.visits or 0),
-     "last_ts": int(r.last_ts or 0)}
+     "last_ts": int(r.last_ts or 0), "type": P[int(r.place_id)].type or "destination"}
     for r in dwell.itertuples() if int(r.place_id) in P]) if not dwell.empty else pd.DataFrame()
 if not places_df.empty:
     places_df = places_df.sort_values("dwell_s", ascending=False).reset_index(drop=True)
@@ -304,12 +304,15 @@ all_lons = [pt[0] for rec in records for pt in rec["path"]]
 
 if show_places and not places_df.empty:
     pl = places_df.copy()
-    pl["radius"] = (pl["dwell_s"].clip(lower=1) ** 0.5 * 40).clip(lower=200)
-    pl["fill"] = [theme.PLACE_RGB + [200]] * len(pl)
-    pl["name"] = pl["label"] + " · " + pl["dwell_s"].apply(theme.fmt_dur)
+    pl["type"] = pl["type"].fillna("destination")
+    transit = pl["type"] == "transit"   # transit stops drawn smaller + lighter
+    pl["radius"] = ((pl["dwell_s"].clip(lower=1) ** 0.5 * 40).clip(lower=200)
+                    * transit.map({True: 0.5, False: 1.0}))
+    pl["fill"] = [theme.PLACE_RGB + ([110] if t == "transit" else [200]) for t in pl["type"]]
+    pl["name"] = pl["label"] + " · " + pl["type"] + " · " + pl["dwell_s"].apply(theme.fmt_dur)
     layers.append(pdk.Layer(
         "ScatterplotLayer", id="places", data=pl, get_position=["lon", "lat"],
-        get_radius="radius", get_fill_color="fill", radius_min_pixels=5, radius_max_pixels=30,
+        get_radius="radius", get_fill_color="fill", radius_min_pixels=4, radius_max_pixels=30,
         pickable=True, stroked=True, get_line_color=[255, 255, 255, 230], line_width_min_pixels=1))
 
 if show_trips and records:

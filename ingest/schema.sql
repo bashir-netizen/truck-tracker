@@ -149,7 +149,15 @@ CREATE TABLE IF NOT EXISTS places (
     radius_m           INTEGER,
     visit_count        INTEGER,
     visit_time_total_s INTEGER,     -- total dwell (parkings) at this place
-    needs_label        INTEGER      -- 1 = weak auto-name, owner should label it
+    needs_label        INTEGER,     -- 1 = weak auto-name, owner should label it
+    type               TEXT,        -- depot|destination|transit|customer|workshop (places.yaml)
+    median_dwell_s     INTEGER,     -- dwell distribution (Part B)
+    p25_dwell_s        INTEGER,
+    p75_dwell_s        INTEGER,
+    longest_dwell_s    INTEGER,
+    shortest_dwell_s   INTEGER,
+    dwell_pattern_hint TEXT,        -- brief|medium|long|overnight
+    suggested_type_from_dwell TEXT  -- transit?|rest?|customer?|depot?|overnight?
 );
 
 -- Journeys: trip legs stitched across short gaps; the real A->B runs.
@@ -214,6 +222,24 @@ CREATE TABLE IF NOT EXISTS trip_paths (
     path_geojson  TEXT,            -- [[lon,lat],…] RDP-simplified, or NULL
     PRIMARY KEY (unit_id, start_ts)
 );
+
+-- Round trips: consecutive journeys that leave a depot and return to one (the
+-- owner's unit of work). Derived from `journeys`; depots from places.yaml flags.
+CREATE TABLE IF NOT EXISTS round_trips (
+    round_trip_id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit_id                  INTEGER NOT NULL,
+    start_ts                 INTEGER NOT NULL,   -- depart depot
+    end_ts                   INTEGER NOT NULL,   -- return to depot
+    primary_destination_id   INTEGER,            -- farthest-from-depot named place
+    primary_destination_name TEXT,
+    journey_class            TEXT NOT NULL,      -- highest class among constituents
+    total_distance_km        REAL,
+    total_duration_s         INTEGER,            -- depot-to-depot wall time
+    constituent_journey_ids  TEXT,               -- JSON array
+    via_places               TEXT,               -- JSON array (outbound, named)
+    return_via_places        TEXT                -- JSON array (return, named)
+);
+CREATE INDEX IF NOT EXISTS idx_round_trips_unit_start ON round_trips (unit_id, start_ts);
 
 CREATE TABLE IF NOT EXISTS trip_metrics (
     unit_id           INTEGER NOT NULL,

@@ -5,6 +5,21 @@
 # `depot: true` (or `home: true`) tags that place as a depot on the Overview,
 # regardless of journey patterns. Places without the flag fall back to a
 # "most-frequent journey origin = depot" heuristic.
+#
+# `type:` classifies the place so the round-trip view treats it correctly.
+# Valid types:
+#   depot       home base; round trips start and end here (implied by depot/home)
+#   destination a real delivery/pickup endpoint (the default if omitted)
+#   transit     a roadside pass-through (fuel, rest); never a primary destination
+#   customer    a named customer site (counts as a destination)
+#   workshop    a service/repair stop (counts as a destination)
+# Backward compatible: no `type:` => "depot" when depot/home is set, else
+# "destination". Mark a roadside cluster `type: transit` to keep it out of the
+# destination list, e.g.:
+#   - label: <roadside name> (A104)
+#     lat: <lat>
+#     lon: <lon>
+#     type: transit
 
 - label: Genwatt office (Athi River)
   lat: -1.43647
