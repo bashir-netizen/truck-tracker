@@ -149,7 +149,7 @@ st.markdown('<div class="tt-h2">Where it went</div>', unsafe_allow_html=True)
 depot_ids = {int(r.place_id) for r in db.q("SELECT place_id FROM places WHERE type='depot'").itertuples()}
 depots = [P.get(i, "—") for i in depot_ids]
 rts = db.q("SELECT primary_destination_name dest, journey_class cls, total_distance_km km, "
-           "total_duration_s dur, via_places via, return_via_places rvia, end_ts "
+           "total_duration_s dur, via_places via, return_via_places rvia, start_ts, end_ts "
            "FROM round_trips WHERE start_ts BETWEEN ? AND ? ORDER BY start_ts", (frm, to))
 last_return = int(rts["end_ts"].max()) if not rts.empty else 0
 
@@ -172,10 +172,12 @@ with gcol:
                 key, title = "__local__", None
             else:
                 key, title = "__yard__", "Yard movements"
-            g = groups.setdefault(key, {"title": title, "cls": r.cls, "count": 0, "last": 0,
-                                        "km": 0.0, "dur": 0, "via": [], "rvia": [], "dests": []})
+            g = groups.setdefault(key, {"title": title, "cls": r.cls, "count": 0,
+                                        "last_start": 0, "last_end": 0, "km": 0.0, "dur": 0,
+                                        "via": [], "rvia": [], "dests": []})
             g["count"] += 1
-            g["last"] = max(g["last"], int(r.end_ts))
+            if int(r.end_ts) >= g["last_end"]:        # track the most-recent trip's span
+                g["last_end"], g["last_start"] = int(r.end_ts), int(r.start_ts)
             g["km"] += r.km or 0
             g["dur"] += int(r.dur or 0)
             g["via"] += json.loads(r.via)
@@ -202,8 +204,9 @@ with gcol:
             else:
                 context = "Within the yard"
             journey_row.render(g["title"], CLASS_LABELS.get(g["cls"], g["cls"]), g["count"],
-                               context, relative_day(g["last"]), g["km"] / g["count"],
-                               theme.fmt_dur(g["dur"] // g["count"]))
+                               context, theme.fmt_date_range(g["last_start"], g["last_end"]),
+                               g["km"] / g["count"], theme.fmt_dur(g["dur"] // g["count"]),
+                               multi=g["count"] > 1)
 
     # currently out (left a depot, not yet returned)
     openj = db.q("SELECT dest_place_id, start_ts FROM journeys WHERE start_ts > ? "
@@ -213,7 +216,7 @@ with gcol:
         if d_last == d_last and int(d_last) not in depot_ids:   # not NaN, not a depot
             st.markdown('<div class="tt-small" style="margin-top:.5rem;color:var(--accent)">'
                         f'<b>Currently out:</b> at {P.get(int(d_last), "—")} since '
-                        f'{relative_day(int(openj.iloc[0]["start_ts"]))}</div>',
+                        f'{theme.fmt_dt(int(openj.iloc[0]["start_ts"]), False)}</div>',
                         unsafe_allow_html=True)
 
     n_hidden = db.scalar(

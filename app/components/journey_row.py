@@ -5,10 +5,11 @@ import streamlit as st
 from app.components import theme
 
 
-def render(title, class_label, count, context, last_str, km, dur_str=""):
+def render(title, class_label, count, context, when_str, km, dur_str="", multi=False):
     badge = theme.confidence_badge("inferred")
-    stats = (f"last {last_str} · ~{km:,.0f} km round trip"
-             + (f" · ~{dur_str} each" if dur_str else ""))
+    when = f"latest {when_str}" if multi else when_str
+    stats = (f"{when} · ~{km:,.0f} km round trip"
+             + (f" · ~{dur_str}{' each' if multi else ''}" if dur_str else ""))
     st.markdown(
         '<div style="padding:.5rem 0;border-bottom:1px solid var(--border)">'
         '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:.5rem">'

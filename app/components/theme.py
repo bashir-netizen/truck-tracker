@@ -320,6 +320,21 @@ def fmt_dur(seconds):
     return f"{m}m"
 
 
+def fmt_date_range(start_ts, end_ts):
+    """Compact run dates: '16–19 May 2026', '30 Apr – 2 May 2026', single day '16 May 2026'."""
+    if not start_ts or not end_ts:
+        return fmt_dt(start_ts or end_ts, False)
+    a = datetime.fromtimestamp(int(start_ts), timezone.utc)
+    b = datetime.fromtimestamp(int(end_ts), timezone.utc)
+    if a.date() == b.date():
+        return a.strftime("%d %b %Y")
+    if (a.year, a.month) == (b.year, b.month):
+        return f"{a.strftime('%d')}–{b.strftime('%d %b %Y')}"
+    if a.year == b.year:
+        return f"{a.strftime('%d %b')} – {b.strftime('%d %b %Y')}"
+    return f"{a.strftime('%d %b %Y')} – {b.strftime('%d %b %Y')}"
+
+
 # Segmented presets -> (length-seconds | "month" | "custom"), friendly label.
 _PERIOD_OPTS = ["7d", "30d", "Month", "Custom"]
 _PERIOD_SPEC = {"7d": (7 * 86400, "Last 7 days"), "30d": (30 * 86400, "Last 30 days"),
