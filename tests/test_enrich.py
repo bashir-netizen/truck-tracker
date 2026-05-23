@@ -162,8 +162,18 @@ def test_driver_score_bounds_and_counts(con):
     add_eco(con, base + 300, "speeding")
     driver.rebuild(con, UNIT)
     row = con.execute("SELECT score, speeding_count FROM driver_score").fetchone()
-    assert 0.0 <= row[0] <= 100.0
+    assert 0.0 <= row[0] <= 10.0          # Wialon 0-10 eco scale
     assert row[1] == 1
+
+
+def test_penalties_to_rank_matches_wialon_bands():
+    assert driver.penalties_to_rank(0) == 10.0
+    assert driver.penalties_to_rank(17) == 9.0
+    assert driver.penalties_to_rank(67) == 7.0
+    assert driver.penalties_to_rank(1067) == 2.0
+    assert driver.penalties_to_rank(5000) >= 1.0   # beyond the table, never below 1
+    # monotonic non-increasing as penalties rise
+    assert driver.penalties_to_rank(50) > driver.penalties_to_rank(200)
 
 
 # -- maintenance -----------------------------------------------------------
