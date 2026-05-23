@@ -120,7 +120,7 @@ else:
         except Exception:
             return "—"
     tbl = pd.DataFrame({
-        "When": pd.to_datetime(hs["ts"], unit="s", utc=True),
+        "When": theme.local_series(hs["ts"]),
         "Type": hs["type"].map(lambda t: TYPE_LABELS.get(t, t)),
         "Severity": hs["severity"],
         "Max km/h": hs["value"],
@@ -152,7 +152,7 @@ if not nj.empty:
     def lbl(pid):
         return P.get(int(pid), "—") if not pd.isna(pid) else "—"
     nt = pd.DataFrame({
-        "Date": pd.to_datetime(nj["start_ts"], unit="s", utc=True),
+        "Date": theme.local_series(nj["start_ts"]),
         "Route": nj["origin_place_id"].map(lbl) + " → " + nj["dest_place_id"].map(lbl),
         "Night driving (h)": (nj["night_seconds"] / 3600).round(1),
     })

@@ -8,6 +8,7 @@ header is the title), muted gridlines, tight margins, units in hovers.
 import time
 from datetime import date, datetime, timedelta, timezone
 
+import pandas as pd
 import streamlit as st
 
 import config
@@ -300,11 +301,21 @@ def style_fig(fig, height=300):
     return fig
 
 
+# Timestamps are stored UTC; the dashboard DISPLAYS them in Kenya time (EAT = UTC +
+# KENYA_UTC_OFFSET_H). Computation/filtering stays UTC (see day_start, period_selector).
+LOCAL_TZ = timezone(timedelta(hours=config.KENYA_UTC_OFFSET_H))
+
+
 def fmt_dt(ts, with_time=True):
     if not ts:
         return "—"
-    dt = datetime.fromtimestamp(int(ts), timezone.utc)
+    dt = datetime.fromtimestamp(int(ts), LOCAL_TZ)
     return dt.strftime("%d %b %Y, %H:%M") if with_time else dt.strftime("%d %b %Y")
+
+
+def local_series(epoch_s):
+    """Epoch-second Series -> naive Kenya-local (EAT) datetimes for st.dataframe display."""
+    return pd.to_datetime(epoch_s, unit="s", utc=True).dt.tz_convert(LOCAL_TZ).dt.tz_localize(None)
 
 
 def fmt_dur(seconds):
@@ -324,8 +335,8 @@ def fmt_date_range(start_ts, end_ts):
     """Compact run dates: '16–19 May 2026', '30 Apr – 2 May 2026', single day '16 May 2026'."""
     if not start_ts or not end_ts:
         return fmt_dt(start_ts or end_ts, False)
-    a = datetime.fromtimestamp(int(start_ts), timezone.utc)
-    b = datetime.fromtimestamp(int(end_ts), timezone.utc)
+    a = datetime.fromtimestamp(int(start_ts), LOCAL_TZ)
+    b = datetime.fromtimestamp(int(end_ts), LOCAL_TZ)
     if a.date() == b.date():
         return a.strftime("%d %b %Y")
     if (a.year, a.month) == (b.year, b.month):
@@ -388,9 +399,9 @@ def freshness_caption():
         st.sidebar.markdown(
             f'<div class="tt-small" style="margin-top:.3rem"><span style="display:inline-block;'
             f'width:8px;height:8px;border-radius:999px;background:{dot};margin-right:.4rem">'
-            f'</span>Data as of {fmt_dt(last)} UTC</div>', unsafe_allow_html=True)
+            f'</span>Data as of {fmt_dt(last)} EAT</div>', unsafe_allow_html=True)
     if ingested:
-        st.sidebar.caption(f"last ingestion {fmt_dt(ingested)} UTC")
+        st.sidebar.caption(f"last ingestion {fmt_dt(ingested)} EAT")
     from app.components import refresh  # lazy: avoids import cost when unused
     refresh.update_button()
     st.sidebar.markdown(

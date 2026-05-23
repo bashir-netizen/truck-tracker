@@ -43,8 +43,8 @@ rt = db.q("SELECT start_ts, end_ts, primary_destination_name dest, journey_class
 if not rt.empty:
     st.subheader("Round trips (jobs)")
     rtl = pd.DataFrame({
-        "Start": pd.to_datetime(rt["start_ts"], unit="s", utc=True),
-        "End": pd.to_datetime(rt["end_ts"], unit="s", utc=True),
+        "Start": theme.local_series(rt["start_ts"]),
+        "End": theme.local_series(rt["end_ts"]),
         "Destination": rt["dest"],
         "Class": rt["cls"],
         "Distance (km)": rt["km"].round(0),
@@ -64,7 +64,7 @@ def lbl(pid):
 
 
 ledger = pd.DataFrame({
-    "Date": pd.to_datetime(journeys["start_ts"], unit="s", utc=True),
+    "Date": theme.local_series(journeys["start_ts"]),
     "From": journeys["origin_place_id"].apply(lbl),
     "To": journeys["dest_place_id"].apply(lbl),
     "Legs": journeys["leg_count"],
@@ -94,8 +94,8 @@ with st.expander("All trips in this period (raw legs)"):
         empty_state("No trips in this period")
     else:
         tl = pd.DataFrame({
-            "Start": pd.to_datetime(trips["start_ts"], unit="s", utc=True),
-            "End": pd.to_datetime(trips["end_ts"], unit="s", utc=True),
+            "Start": theme.local_series(trips["start_ts"]),
+            "End": theme.local_series(trips["end_ts"]),
             "Distance (km)": (trips["distance_m"] / 1000).round(1),
             "Duration (h)": (trips["duration_s"] / 3600).round(2),
             "Avg (km/h)": trips["avg_speed_kmh"],

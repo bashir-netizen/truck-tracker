@@ -212,8 +212,8 @@ for r in tdf.itertuples():
     n_of, m_of = n_in_day.get(int(r.start_ts), (1, 1))
     a = nearest_place(path[0][1], path[0][0]) or "start"
     b = nearest_place(path[-1][1], path[-1][0]) or "end"
-    t0 = datetime.fromtimestamp(int(r.start_ts), timezone.utc).strftime("%d %b %H:%M")
-    t1 = datetime.fromtimestamp(int(r.end_ts), timezone.utc).strftime("%H:%M")
+    t0 = datetime.fromtimestamp(int(r.start_ts), theme.LOCAL_TZ).strftime("%d %b %H:%M")
+    t1 = datetime.fromtimestamp(int(r.end_ts), theme.LOCAL_TZ).strftime("%H:%M")
     records.append({
         "start_ts": int(r.start_ts), "end_ts": int(r.end_ts),
         "journey_class": cls, "day": r.day, "distance_km": km,
@@ -437,7 +437,7 @@ def trip_label(ts):
     if ts is None:
         return "— pick a trip —"
     r = rec_by_ts.get(ts)
-    when = datetime.fromtimestamp(ts, timezone.utc).strftime("%d %b %H:%M")
+    when = datetime.fromtimestamp(ts, theme.LOCAL_TZ).strftime("%d %b %H:%M")
     return f"{when} · {CLASS_LABELS.get(r['journey_class'], r['journey_class'])} · {r['distance_km']} km"
 
 
@@ -458,11 +458,11 @@ def positions_between(lo, hi):
 
 if sel_event:
     ev = sel_event
-    when = datetime.fromtimestamp(ev["ts"], timezone.utc).strftime("%d %b %Y · %H:%M UTC")
+    when = datetime.fromtimestamp(ev["ts"], theme.LOCAL_TZ).strftime("%d %b %Y · %H:%M EAT")
     ctrip = containing_trip(ev["ts"])
     where = ev.get("detail", "")
     ctx = (f"during the {CLASS_LABELS.get(ctrip['journey_class'], ctrip['journey_class'])} "
-           f"trip of {datetime.fromtimestamp(ctrip['start_ts'], timezone.utc):%d %b %H:%M}"
+           f"trip of {datetime.fromtimestamp(ctrip['start_ts'], theme.LOCAL_TZ):%d %b %H:%M}"
            if ctrip else "while parked (not inside a trip)")
     a, b = st.columns([3, 1])
     with a:
@@ -478,7 +478,7 @@ if sel_event:
         pts = positions_between(ctrip["start_ts"], ctrip["end_ts"])
         components.html(track_player.player_html(
             pts, color=ctrip["color"], focus_s=ev["ts"] - ctrip["start_ts"],
-            label=f'Trip of {datetime.fromtimestamp(ctrip["start_ts"], timezone.utc):%d %b} — '
+            label=f'Trip of {datetime.fromtimestamp(ctrip["start_ts"], theme.LOCAL_TZ):%d %b} — '
                   f'playhead at the event'),
             height=track_player.player_total_height())
     else:

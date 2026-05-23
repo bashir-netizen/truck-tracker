@@ -50,7 +50,7 @@ if eco.empty:
     empty_state("No economy data", "Need trips over "
                 f"{config.MIN_ECONOMY_KM} km to compute L/100km reliably.")
 else:
-    eco["when"] = pd.to_datetime(eco["ts"], unit="s", utc=True)
+    eco["when"] = theme.local_series(eco["ts"])
     fig = px.line(eco, x="when", y="l100", markers=True)
     fig.update_traces(line_color=theme.ACCENT,
                       hovertemplate="%{x|%d %b %H:%M}<br>%{y:.1f} L/100km<extra></extra>")
@@ -65,7 +65,7 @@ fills = db.q(
 if fills.empty:
     empty_state("No fillings in this period")
 else:
-    fills["When"] = pd.to_datetime(fills["ts"], unit="s", utc=True)
+    fills["When"] = theme.local_series(fills["ts"])
     st.dataframe(
         fills[["When", "volume_l", "level_before_l", "level_after_l"]],
         hide_index=True, width="stretch",

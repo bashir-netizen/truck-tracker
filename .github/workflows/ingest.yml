@@ -6,7 +6,7 @@ name: Ingest
 
 on:
   schedule:
-    - cron: "0 */3 * * *"   # every 3 hours (UTC; GitHub cron is best-effort)
+    - cron: "0 * * * *"     # hourly (UTC; GitHub cron is best-effort and often delayed)
   workflow_dispatch: {}       # allow manual runs
 
 permissions:

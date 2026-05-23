@@ -13,7 +13,6 @@ Opened from the Overview via ?round_trip=<id>; pages/1_Map.py renders Mode 1
 
 import json
 from collections import Counter
-from datetime import datetime, timezone
 
 import pandas as pd
 import pydeck as pdk
@@ -35,10 +34,6 @@ DEPOT_RGB = [63, 125, 88]             # green — home base
 PRIMARY_RGB = [196, 61, 47]           # accent — the primary destination
 WAYPOINT_RGB = [120, 116, 108]        # neutral — an intermediate stop
 LONG_STOP_S = 7200                    # 2 h — a "long stop" event (matches the period Map)
-
-
-def _dt(ts):
-    return datetime.fromtimestamp(int(ts), timezone.utc)
 
 
 # ---- reconstruction (read-only) ------------------------------------------
