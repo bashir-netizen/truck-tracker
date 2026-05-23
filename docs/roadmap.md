@@ -124,6 +124,16 @@ Place-name hover with a visit-history mini-chart; editorial annotations on cards
 fill: 363 L on 21 May"); time-of-day (day vs night) activity split; per-day drill-down in
 Geography (monthly → daily).
 
+## Currently out — deferred
+The current-status line + "Currently out" block escalate on simple rules (away >7d → warn,
+>14d or device-silent >24h → critical). Deferred refinements:
+- **Auto-escalation tuning** from historical durations (learn that Marsabit runs typically take
+  3–4 days, so 5+ days warns) instead of fixed 7/14-day thresholds.
+- **Live in-progress trip view** — a Map mode for the open trip showing path-so-far + last known
+  position (today Journey View covers completed round trips only).
+- **ETA** — estimated time remaining from the median duration for that destination.
+- **Live position context** — "Last position: 2.3 km SW of Siaya town centre · updated 23 min ago".
+
 ## Driver page — deferred
 Per-trip violation breakdown (which trips had which types); driver-behaviour trend over time
 (events/100 km by week); geographic heat-map of where violations cluster.

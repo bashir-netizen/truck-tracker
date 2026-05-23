@@ -17,9 +17,10 @@ import streamlit.components.v1 as components  # noqa: E402
 
 import config  # noqa: E402
 from app.components import (db, hero_summary, journey_row, status_panel,  # noqa: E402
-                            status_strip, theme, thumbnail_map, trip_mix_line)
+                            status_strip, theme, thumbnail_map, trip_mix_line,
+                            truck_status)
 from app.components.empty_state import empty_state  # noqa: E402
-from app.components.format import format_kes, relative_day  # noqa: E402
+from app.components.format import format_kes  # noqa: E402
 from app.components.metric_card import metric_card  # noqa: E402
 from billing import estimate  # noqa: E402
 
@@ -81,6 +82,7 @@ filled = psum("volume_l", table="fillings", ts="ts")
 diesel = config.RATES["diesel_kes_per_l"]
 
 P = {int(r.place_id): r.label for r in db.q("SELECT place_id, label FROM places").itertuples()}
+status_now = truck_status.compute()    # period-independent "where is the truck right now"
 
 
 def delta_pct(cur, prev):
@@ -110,6 +112,20 @@ with hr:
         '-apple-system,sans-serif;background:#fff;border:1px solid #e6e8ec;border-radius:8px;'
         'padding:.4rem .5rem;cursor:pointer;color:#0e1116">⤓ Share PDF</button>',
         height=44)
+
+# Where is the truck right now? (period-independent — see components/truck_status.py)
+if status_now["away"]:
+    _lvl = status_now["level"]
+    _col = truck_status.LEVEL_COLOR.get(_lvl, theme.ACCENT)
+    _mark = "⚠ " if _lvl in ("warn", "critical") else ""
+    st.markdown(f'<div style="margin:.2rem 0 .4rem;color:{_col};font-weight:600">'
+                f'{_mark}Currently at {status_now["place"]} · '
+                f'{theme.fmt_dur(status_now["away_s"])} away from base'
+                f'{" · no recent GPS" if status_now["silent"] else ""}</div>',
+                unsafe_allow_html=True)
+elif status_now["last_home_ts"]:
+    st.markdown(f'<div class="tt-small" style="margin:.2rem 0 .4rem">At home base since '
+                f'{theme.fmt_dt(status_now["last_home_ts"], False)}</div>', unsafe_allow_html=True)
 
 items = status_panel.gather(frm, to)
 status_strip.render(items)
@@ -160,15 +176,33 @@ rts = db.q("SELECT round_trip_id rtid, primary_destination_name dest, journey_cl
            "total_distance_km km, total_duration_s dur, via_places via, return_via_places rvia, "
            "start_ts, end_ts FROM round_trips WHERE start_ts BETWEEN ? AND ? ORDER BY start_ts",
            (frm, to))
-last_return = int(rts["end_ts"].max()) if not rts.empty else 0
 
 gcol, mcol = st.columns([3, 2])
 with gcol:
+    # Three units, kept distinct (see also components/truck_status.py):
+    #   journey leg = one movement segment (a journeys row)
+    #   round trip  = a completed depot -> away -> depot cycle (a round_trips row)
+    #   open trip   = currently away, not yet a completed round trip
     if depots:
-        ret = f" — last returned {relative_day(last_return)}" if last_return else ""
         st.markdown(f'<div class="tt-small" style="margin-bottom:.5rem"><b>Home base:</b> '
-                    f'{", ".join(depots)}{ret}</div>', unsafe_allow_html=True)
-    trip_mix_line.render(mix)
+                    f'{", ".join(depots)}</div>', unsafe_allow_html=True)
+
+    # Currently out — the open trip; accent by default, escalates (truck_status.level).
+    if status_now["away"]:
+        lvl = status_now["level"]
+        col = truck_status.LEVEL_COLOR.get(lvl, theme.ACCENT)
+        mark = "⚠ " if lvl in ("warn", "critical") else ""
+        body = (f'<b>{mark}Currently out:</b> at {status_now["place"]} since '
+                f'{theme.fmt_dt(status_now["arrived_ts"], False)} · '
+                f'{theme.fmt_dur(status_now["away_s"])} away from base'
+                + (" · no recent GPS" if status_now["silent"] else ""))
+        if lvl == "critical":
+            st.markdown(f'<div style="background:#fbe3df;border-radius:8px;padding:.45rem .7rem;'
+                        f'margin:.1rem 0 .6rem;color:{col};font-weight:600">{body}</div>',
+                        unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div class="tt-small" style="margin:.1rem 0 .6rem;color:{col}">{body}'
+                        f'</div>', unsafe_allow_html=True)
 
     if rts.empty:
         empty_state("No completed round trips this period")
@@ -199,8 +233,27 @@ with gcol:
             gl = groups["__local__"]
             common = Counter(d for d in gl["dests"] if d).most_common(1)
             gl["title"] = f"Local {common[0][0]} work" if common else "Local work"
-        for g in sorted(groups.values(), key=lambda x: (RANK.get(x["cls"], 0), x["count"]),
-                        reverse=True):
+
+        # Completed this period — counts the round-trip unit (not legs); zero classes omitted.
+        n_done = len(rts)
+        cls_counts = Counter(rts["cls"])
+        order = ["long_haul", "regional", "local", "yard"]
+        mix_bits = [f'{cls_counts[c]} {CLASS_LABELS[c]}' for c in order if cls_counts.get(c)]
+        other = sum(n for c, n in cls_counts.items() if c not in order)
+        if other:
+            mix_bits.append(f'{other} other')
+        open_txt = " · 1 open trip" if status_now["away"] else ""
+        st.markdown('<div class="tt-small" style="margin-top:.2rem"><b>Completed this period</b>'
+                    '</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="tt-small">{n_done} completed round trip'
+                    f'{"s" if n_done != 1 else ""}{open_txt}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="tt-small" style="margin-bottom:.5rem">Mix: '
+                    f'{" · ".join(mix_bits)}</div>', unsafe_allow_html=True)
+
+        # Recent journeys — most recent first (by return date).
+        st.markdown('<div class="tt-small" style="margin-top:.2rem"><b>Recent journeys</b></div>',
+                    unsafe_allow_html=True)
+        for g in sorted(groups.values(), key=lambda x: x["last_end"], reverse=True):
             via, rvia = list(dict.fromkeys(g["via"])), list(dict.fromkeys(g["rvia"]))
             if g["cls"] in ("long_haul", "regional"):
                 bits = []
@@ -225,17 +278,6 @@ with gcol:
                     st.session_state["journey_rt"] = g["rtid"]
                     st.query_params["round_trip"] = str(g["rtid"])
                     st.switch_page("pages/1_Map.py")
-
-    # currently out (left a depot, not yet returned)
-    openj = db.q("SELECT dest_place_id, start_ts FROM journeys WHERE start_ts > ? "
-                 "AND start_ts BETWEEN ? AND ? ORDER BY start_ts", (last_return, frm, to))
-    if not openj.empty:
-        d_last = openj.iloc[-1]["dest_place_id"]
-        if d_last == d_last and int(d_last) not in depot_ids:   # not NaN, not a depot
-            st.markdown('<div class="tt-small" style="margin-top:.5rem;color:var(--accent)">'
-                        f'<b>Currently out:</b> at {P.get(int(d_last), "—")} since '
-                        f'{theme.fmt_dt(int(openj.iloc[0]["start_ts"]), False)}</div>',
-                        unsafe_allow_html=True)
 
     n_hidden = db.scalar(
         "SELECT COUNT(DISTINCT pv.place_id) FROM place_visits pv JOIN places p "
