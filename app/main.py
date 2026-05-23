@@ -1,5 +1,6 @@
 """Overview — is everything okay with the truck? Status first, then the story."""
 
+import importlib
 import pathlib
 import sys
 from collections import Counter
@@ -21,6 +22,13 @@ from app.components.empty_state import empty_state  # noqa: E402
 from app.components.format import format_kes, relative_day  # noqa: E402
 from app.components.metric_card import metric_card  # noqa: E402
 from billing import estimate  # noqa: E402
+
+# Streamlit Cloud can serve an old cached `theme`/`config` right after a deploy
+# that adds new attributes (e.g. theme.fmt_date_range); reload picks up the new file.
+importlib.reload(config)
+importlib.reload(theme)
+# Belt-and-suspenders: if the cached theme still lacks it, degrade to a single date.
+_fmt_range = getattr(theme, "fmt_date_range", lambda a, b: theme.fmt_dt(a, False))
 
 theme.page_setup("Overview")
 
@@ -204,7 +212,7 @@ with gcol:
             else:
                 context = "Within the yard"
             journey_row.render(g["title"], CLASS_LABELS.get(g["cls"], g["cls"]), g["count"],
-                               context, theme.fmt_date_range(g["last_start"], g["last_end"]),
+                               context, _fmt_range(g["last_start"], g["last_end"]),
                                g["km"] / g["count"], theme.fmt_dur(g["dur"] // g["count"]),
                                multi=g["count"] > 1)
 
