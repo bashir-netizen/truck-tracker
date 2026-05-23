@@ -24,6 +24,26 @@ CLASS_LABELS = {"long_haul": "long haul", "regional": "regional",
                 "local": "local", "yard": "yard"}
 TRIP_CLASS_COLORS = {"long_haul": "#1F6FEB", "regional": "#D97706", "local": "#16A34A"}
 CLASS_COLORS = {**TRIP_CLASS_COLORS, "yard": "#94A3B8"}
+
+# Per-trip track width by class (thicker on long-haul). Used by the Map PathLayer.
+CLASS_WIDTH = {"long_haul": 6, "regional": 5, "local": 4, "yard": 3}
+
+# 8-colour accessible categorical palette for per-trip tracks, keyed by local date.
+# Trips on the same date share a colour; the date->index is a stable CRC (not
+# Python's salted hash), so colours don't shuffle between reruns.
+TRIP_DATE_PALETTE = ["#c43d2f", "#1d6fb8", "#1d8a4a", "#c47d1d",
+                     "#7b4fb0", "#0f8e8e", "#b03f7a", "#5b6770"]
+
+
+def date_color(date_str):
+    """Deterministic palette colour (hex) for a 'YYYY-MM-DD' string."""
+    import zlib
+    return TRIP_DATE_PALETTE[zlib.crc32(date_str.encode()) % len(TRIP_DATE_PALETTE)]
+
+
+def hex_to_rgb(h):
+    h = h.lstrip("#")
+    return [int(h[i:i + 2], 16) for i in (0, 2, 4)]
 INK = "#0F172A"                       # slate ink (body text)
 MUTED = "#64748B"                     # secondary text
 HAIRLINE = "#E5E7EB"                  # borders / gridlines

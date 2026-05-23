@@ -1,46 +1,55 @@
-"""Map — the headline view: where the truck went and what kind of work it did."""
+"""Map — multi-trip view: every trip as a colour-by-date track with direction
+arrows, event overlays (fuel fills, harsh events, long unknown stops), a date
+legend/filter, click-to-investigate event drill-in, and in-dashboard playback of
+any trip. Per-trip paths come from the derived `trip_paths` table; playback is the
+self-contained deck.gl player in components/track_player.py."""
 
 import importlib
 import json
 import math
 import pathlib
 import sys
-from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
+from urllib.parse import quote
 
 ROOT = next(p for p in pathlib.Path(__file__).resolve().parents if (p / "config.py").exists())
 sys.path.insert(0, str(ROOT))
 
 import pandas as pd  # noqa: E402
-import plotly.express as px  # noqa: E402
 import pydeck as pdk  # noqa: E402
 import streamlit as st  # noqa: E402
+import streamlit.components.v1 as components  # noqa: E402
 
 import config  # noqa: E402
-from app.components import db, theme  # noqa: E402
+from app.components import db, theme, track_player  # noqa: E402
 from app.components.empty_state import empty_state  # noqa: E402
 from app.components.format import format_kes, relative_day  # noqa: E402
 from app.components.metric_card import metric_card  # noqa: E402
 from billing import estimate  # noqa: E402
 
-# Streamlit Cloud can serve a page against a stale, cached config/theme module
-# right after a deploy that adds new constants. Re-read both from disk so any
-# newly-added attribute (RATES, CLASS_LABELS, …) is always present.
 importlib.reload(config)
 importlib.reload(theme)
 
 theme.page_setup("Map")
 ROUTE_CLASSES = ["long_haul", "regional", "local"]
 FILTER_TO_CHAR = {"All": None, "Long haul": "long_haul", "Regional": "regional", "Local": "local"}
-
-# getattr fallbacks guard against Streamlit Cloud serving this page against a
-# stale (cached) theme module right after a deploy adds new attributes.
 CLASS_LABELS = getattr(theme, "CLASS_LABELS", {
     "long_haul": "long haul", "regional": "regional", "local": "local", "yard": "yard"})
-CLASS_COLORS = getattr(theme, "CLASS_COLORS", {
-    "long_haul": "#1F6FEB", "regional": "#D97706", "local": "#16A34A", "yard": "#94A3B8"})
-TRIP_CLASS_COLORS = getattr(theme, "TRIP_CLASS_COLORS", {
-    "long_haul": "#1F6FEB", "regional": "#D97706", "local": "#16A34A"})
+CLASS_WIDTH = getattr(theme, "CLASS_WIDTH", {
+    "long_haul": 6, "regional": 5, "local": 4, "yard": 3})
+MAX_TRIPS = 50
+LONG_STOP_S = 7200          # 2 h
+EVENT_RGB = {"fill": [29, 111, 184], "harsh": [196, 61, 47], "stop": [91, 103, 112]}
+EVENT_NAME = {"fill": "Fuel fill", "harsh": "Harsh event", "stop": "Long stop (unknown place)"}
+# A small right-pointing arrow; tinted dark, drawn along each track to show heading.
+_ARROW_SVG = ("<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' "
+              "viewBox='0 0 24 24'><path d='M3 12 H17 M12 6 L19 12 L12 18' "
+              "fill='none' stroke='%230e1116' stroke-width='2.6' stroke-linecap='round' "
+              "stroke-linejoin='round'/></svg>")
+ARROW_ICON = {"url": "data:image/svg+xml;charset=utf-8," + quote(_ARROW_SVG),
+              "width": 24, "height": 24, "anchorX": 12, "anchorY": 12}
+TYPE_LABELS = {"harsh_accel": "Harsh acceleration", "harsh_brake": "Harsh braking",
+               "harsh_corner": "Harsh cornering", "speeding": "Speeding", "idling": "Idling"}
 
 
 def day_start(d):
@@ -48,13 +57,39 @@ def day_start(d):
 
 
 def fit_view(lats, lons):
+    if not lats:
+        return pdk.ViewState(latitude=0.5, longitude=37.5, zoom=5.5)  # Kenya
     clat, clon = (min(lats) + max(lats)) / 2, (min(lons) + max(lons)) / 2
     span = max(max(lats) - min(lats), max(lons) - min(lons), 0.02)
     return pdk.ViewState(latitude=clat, longitude=clon,
-                         zoom=max(4.0, min(13.0, math.log2(360.0 / span) - 1)))
+                         zoom=max(4.5, min(13.0, math.log2(360.0 / span) - 1)))
 
 
-# --- date range control ---------------------------------------------------
+def haversine_km(la0, lo0, la1, lo1):
+    r = 6371.0
+    p0, p1 = math.radians(la0), math.radians(la1)
+    dp, dl = math.radians(la1 - la0), math.radians(lo1 - lo0)
+    a = math.sin(dp / 2) ** 2 + math.cos(p0) * math.cos(p1) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(min(1.0, math.sqrt(a)))
+
+
+def sample_arrows(path, every_km=5.0):
+    """Arrow markers (position + heading) every ~every_km along a [[lon,lat],…] path."""
+    out, acc = [], 0.0
+    for i in range(1, len(path)):
+        lo0, la0 = path[i - 1]
+        lo1, la1 = path[i]
+        acc += haversine_km(la0, lo0, la1, lo1)
+        if acc >= every_km:
+            acc = 0.0
+            dy = la1 - la0
+            dx = (lo1 - lo0) * math.cos(math.radians((la0 + la1) / 2))
+            ang = math.degrees(math.atan2(dy, dx))  # CCW from east; arrow SVG points east
+            out.append({"position": [lo1, la1], "angle": ang, "icon": ARROW_ICON})
+    return out
+
+
+# --- date range control (sidebar) -----------------------------------------
 today = date.today()
 month_start = today.replace(day=1)
 if "map_range" not in st.session_state:
@@ -74,69 +109,105 @@ if isinstance(picked, tuple) and len(picked) == 2:
 frm_d, to_d = st.session_state.map_range
 from_ts, to_ts = day_start(frm_d), day_start(to_d) + 86399
 theme.freshness_caption()
-theme.header("Map", f"{frm_d:%d %b} – {to_d:%d %b %Y} · where the truck went")
+theme.header("Map", f"{frm_d:%d %b} – {to_d:%d %b %Y} · every trip, with events and playback")
 
-# --- load data ------------------------------------------------------------
-places = db.q("SELECT place_id, label, lat, lon, needs_label FROM places")
+# --- places ---------------------------------------------------------------
+places = db.q("SELECT place_id, label, lat, lon, radius_m, needs_label FROM places")
 if places.empty:
     empty_state("No places yet",
-                "Place detection runs after the first enrichment pass. "
                 "Run <code>python -m enrich.run</code> to populate the map.")
     st.stop()
 P = {int(r.place_id): r for r in places.itertuples()}
 
-journeys = db.q(
-    "SELECT start_ts, origin_place_id, dest_place_id, distance_m, duration_s, fuel_l, "
-    "is_local, journey_character FROM journeys WHERE start_ts BETWEEN ? AND ? ORDER BY start_ts DESC",
-    (from_ts, to_ts))
+# --- per-trip paths (derived) + trip coords (raw) -------------------------
+trips = db.q(
+    "SELECT tp.start_ts, tp.end_ts, tp.journey_class, tp.path_geojson, "
+    "       t.start_lat, t.start_lon, t.end_lat, t.end_lon, t.distance_m "
+    "FROM trip_paths tp JOIN trips t "
+    "  ON t.unit_id = tp.unit_id AND t.start_ts = tp.start_ts "
+    "WHERE tp.start_ts BETWEEN ? AND ? ORDER BY tp.start_ts DESC", (from_ts, to_ts))
 
-# --- trip-mix headline (all classes) --------------------------------------
+journeys = db.q(
+    "SELECT journey_character FROM journeys WHERE start_ts BETWEEN ? AND ?", (from_ts, to_ts))
 counts = journeys["journey_character"].value_counts().to_dict() if not journeys.empty else {}
 parts = [f"<b>{int(counts[c])}</b> {CLASS_LABELS[c]}"
          for c in ["long_haul", "regional", "local", "yard"] if counts.get(c, 0)]
 st.markdown(f'<div class="tt-mix">This period: {" · ".join(parts)}</div>' if parts
             else '<div class="tt-mix">No trips this period.</div>', unsafe_allow_html=True)
 
-# --- class filter ---------------------------------------------------------
-choice = st.segmented_control("Class", list(FILTER_TO_CHAR), default="All", key="class_filter")
+if trips.empty:
+    empty_state("No trips in this period", "Try a wider range in the sidebar.")
+    st.stop()
+
+# --- controls: class filter · layer toggles -------------------------------
+c_left, c_right = st.columns([2, 3])
+with c_left:
+    choice = st.segmented_control("Class", list(FILTER_TO_CHAR), default="All", key="class_filter")
 char = FILTER_TO_CHAR.get(choice or "All")
+with c_right:
+    tg = st.columns(3)
+    show_trips = tg[0].toggle("Trips", value=True, key="lyr_trips")
+    show_places = tg[1].toggle("Places", value=True, key="lyr_places")
+    show_events = tg[2].toggle("Events", value=True, key="lyr_events")
 
-routes = journeys[journeys["is_local"] == 0]
-fj = routes if char is None else routes[routes["journey_character"] == char]
+tdf = trips if char is None else trips[trips["journey_class"] == char]
 
-# --- corridors from filtered journeys -------------------------------------
-cpaths = {}
-for r in db.q("SELECT place_a_id, place_b_id, path_geojson FROM corridors").itertuples():
-    if r.path_geojson:
-        cpaths[(int(r.place_a_id), int(r.place_b_id))] = json.loads(r.path_geojson)
+# date string per trip + colour
+tdf = tdf.assign(
+    day=tdf["start_ts"].map(lambda t: datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%d")))
 
-agg = defaultdict(lambda: {"n": 0, "km": 0.0, "fuel": 0.0, "dur": 0, "last": None})
-for j in fj.itertuples():
-    if pd.isna(j.origin_place_id) or pd.isna(j.dest_place_id):
-        continue
-    a, b = int(j.origin_place_id), int(j.dest_place_id)
-    if a == b:
-        continue
-    g = agg[(min(a, b), max(a, b))]
-    g["n"] += 1
-    g["km"] += (j.distance_m or 0) / 1000
-    g["fuel"] += j.fuel_l or 0
-    g["dur"] += j.duration_s or 0
-    g["last"] = j.start_ts if g["last"] is None else max(g["last"], j.start_ts)
+# --- date legend / filter -------------------------------------------------
+day_counts = tdf.groupby("day").size().to_dict()
+st.session_state.setdefault("map_day", None)
+st.markdown('<div class="tt-eyebrow" style="margin:.3rem 0 .2rem">Trips by day — click to '
+            'filter</div>', unsafe_allow_html=True)
+legend_cols = st.columns(min(8, max(1, len(day_counts) + 1)))
+with legend_cols[0]:
+    if st.button("All dates", use_container_width=True,
+                 type="primary" if st.session_state.map_day is None else "secondary"):
+        st.session_state.map_day = None
+        st.rerun()
+for i, d in enumerate(sorted(day_counts, reverse=True)[:7], start=1):
+    swatch = theme.date_color(d)
+    lbl = datetime.strptime(d, "%Y-%m-%d").strftime("%d %b")
+    with legend_cols[i]:
+        if st.button(f"{lbl} · {day_counts[d]}", key=f"day_{d}", use_container_width=True,
+                     type="primary" if st.session_state.map_day == d else "secondary"):
+            st.session_state.map_day = None if st.session_state.map_day == d else d
+            st.rerun()
+        st.markdown(f'<div style="height:3px;border-radius:2px;background:{swatch};'
+                    f'margin:-.4rem .2rem .4rem"></div>', unsafe_allow_html=True)
 
-corr = []
-for (a, b), g in agg.items():
-    if a in P and b in P:
-        corr.append({
-            "key": f"{a}-{b}", "A": P[a].label, "B": P[b].label, "Trips": g["n"],
-            "Distance": round(g["km"]), "Avg duration": round(g["dur"] / g["n"] / 3600, 1),
-            "Avg fuel": round(g["fuel"] / g["n"]),
-            "L/100km": round(g["fuel"] / g["km"] * 100, 1) if g["km"] else None,
-            "last": theme.fmt_dt(g["last"], with_time=False),
-            "path": cpaths.get((a, b)) or [[P[a].lon, P[a].lat], [P[b].lon, P[b].lat]]})
-corr_df = pd.DataFrame(corr).sort_values(["Trips", "Distance"], ascending=False).reset_index(drop=True) \
-    if corr else pd.DataFrame()
+if st.session_state.map_day:
+    tdf = tdf[tdf["day"] == st.session_state.map_day]
 
+# performance cap: only for large ranges (a normal month renders fine)
+capped = (to_ts - from_ts) / 86400 > 30 and len(tdf) > MAX_TRIPS
+if capped:
+    tdf = tdf.head(MAX_TRIPS)
+
+# build per-trip records
+records = []
+for r in tdf.itertuples():
+    path = json.loads(r.path_geojson) if isinstance(r.path_geojson, str) else None
+    fallback = path is None
+    if fallback:  # NULL path -> dashed straight line start->end
+        if r.start_lat is None or r.end_lat is None:
+            continue
+        path = [[r.start_lon, r.start_lat], [r.end_lon, r.end_lat]]
+    cls = r.journey_class or "local"
+    pretty = datetime.fromtimestamp(int(r.start_ts), timezone.utc).strftime("%d %b %H:%M")
+    km = round((r.distance_m or 0) / 1000)
+    records.append({
+        "start_ts": int(r.start_ts), "end_ts": int(r.end_ts),
+        "journey_class": cls, "day": r.day, "distance_km": km,
+        "path": path, "fallback": fallback,
+        "name": f"{pretty} · {CLASS_LABELS.get(cls, cls)} · {km} km"
+                + (" · GPS path missing (straight line)" if fallback else ""),
+        "color": theme.hex_to_rgb(theme.date_color(r.day)),
+        "width": CLASS_WIDTH.get(cls, 4)})
+
+# --- places (period dwell) ------------------------------------------------
 dwell = db.q("SELECT place_id, SUM(duration_s) dwell, COUNT(*) visits, MAX(ts) last_ts "
              "FROM place_visits WHERE ts BETWEEN ? AND ? GROUP BY place_id", (from_ts, to_ts))
 places_df = pd.DataFrame([
@@ -147,164 +218,218 @@ places_df = pd.DataFrame([
 if not places_df.empty:
     places_df = places_df.sort_values("dwell_s", ascending=False).reset_index(drop=True)
 
-# --- period summary (respects the class filter) ---------------------------
-span = to_ts - from_ts
+# --- events (only loaded when the Events layer is on) ---------------------
+events = []
+if show_events:
+    lo, hi = from_ts, to_ts
+    for r in db.q("SELECT ts, lat, lon, volume_l FROM fillings WHERE ts BETWEEN ? AND ?",
+                  (lo, hi)).itertuples():
+        if r.lat is not None:
+            events.append({"kind": "fill", "ts": int(r.ts), "lat": r.lat, "lon": r.lon,
+                           "detail": f"{r.volume_l:.0f} L filled", "radius": 9})
+    harsh = db.q(
+        "SELECT e.ts, e.lat, e.lon, e.type, f.severity FROM eco_events e "
+        "JOIN eco_flags f ON f.unit_id=e.unit_id AND f.ts=e.ts AND f.type=e.type "
+        "WHERE e.ts BETWEEN ? AND ?", (lo, hi))
+    sev_r = {"extreme": 12, "medium": 8, "mild": 6}
+    for r in harsh.itertuples():
+        if r.lat is not None:
+            events.append({"kind": "harsh", "ts": int(r.ts), "lat": r.lat, "lon": r.lon,
+                           "detail": f"{TYPE_LABELS.get(r.type, r.type)} ({r.severity or 'n/a'})",
+                           "radius": sev_r.get(r.severity, 7)})
+    # long stops (>2h) outside every known place radius (display-time geofilter)
+    for r in db.q("SELECT start_ts, duration_s, lat, lon FROM stops "
+                  "WHERE duration_s >= ? AND start_ts BETWEEN ? AND ?",
+                  (LONG_STOP_S, lo, hi)).itertuples():
+        if r.lat is None:
+            continue
+        inside = any(haversine_km(r.lat, r.lon, p.lat, p.lon) * 1000 <= (p.radius_m or 0)
+                     for p in P.values())
+        if not inside:
+            events.append({"kind": "stop", "ts": int(r.start_ts), "lat": r.lat, "lon": r.lon,
+                           "detail": f"Stopped {theme.fmt_dur(r.duration_s)} (no known place)",
+                           "radius": 9})
 
 
-def route_stats(lo, hi, character):
-    cond, params = "", [lo, hi]
-    if character:
-        cond, params = " AND journey_character=?", [lo, hi, character]
-    j = db.q("SELECT distance_m, start_ts, origin_place_id, dest_place_id FROM journeys "
-             f"WHERE is_local=0 AND start_ts BETWEEN ? AND ?{cond}", tuple(params))
-    if j.empty:
-        return {"journeys": 0, "km": 0, "days": 0, "places": 0}
-    days = len({datetime.fromtimestamp(t, timezone.utc).date() for t in j["start_ts"]})
-    pl = set(j["origin_place_id"].dropna()) | set(j["dest_place_id"].dropna())
-    return {"journeys": len(j), "km": j["distance_m"].sum() / 1000, "days": days, "places": len(pl)}
+def containing_trip(ts):
+    for rec in records:
+        if rec["start_ts"] <= ts <= rec["end_ts"]:
+            return rec
+    return None
 
 
-cur, prev = route_stats(from_ts, to_ts, char), route_stats(from_ts - span, from_ts, char)
-has_prev = db.scalar("SELECT COUNT(*) FROM journeys WHERE start_ts < ?", (from_ts,), 0) > 0
-longest = (fj.sort_values("distance_m", ascending=False).iloc[0] if not fj.empty else None)
+# --- build map layers -----------------------------------------------------
+layers = []
+all_lats = [pt[1] for rec in records for pt in rec["path"]]
+all_lons = [pt[0] for rec in records for pt in rec["path"]]
+
+if show_places and not places_df.empty:
+    pl = places_df.copy()
+    pl["radius"] = (pl["dwell_s"].clip(lower=1) ** 0.5 * 40).clip(lower=200)
+    pl["fill"] = [theme.PLACE_RGB + [200]] * len(pl)
+    pl["name"] = pl["label"] + " · " + pl["dwell_s"].apply(theme.fmt_dur)
+    layers.append(pdk.Layer(
+        "ScatterplotLayer", id="places", data=pl, get_position=["lon", "lat"],
+        get_radius="radius", get_fill_color="fill", radius_min_pixels=5, radius_max_pixels=30,
+        pickable=True, stroked=True, get_line_color=[255, 255, 255, 230], line_width_min_pixels=1))
+
+if show_trips and records:
+    solid = pd.DataFrame([r for r in records if not r["fallback"]])
+    dashed = pd.DataFrame([r for r in records if r["fallback"]])
+    if not solid.empty:
+        layers.append(pdk.Layer(
+            "PathLayer", id="trips", data=solid, get_path="path", get_color="color",
+            get_width="width", width_units="pixels", width_min_pixels=2, width_max_pixels=10,
+            opacity=0.75, pickable=True, cap_rounded=True, joint_rounded=True))
+        arrows = []
+        for r in records:
+            if not r["fallback"]:
+                arrows += sample_arrows(r["path"])
+        if arrows:
+            layers.append(pdk.Layer(
+                "IconLayer", id="arrows", data=arrows, get_icon="icon", get_position="position",
+                get_angle="angle", get_size=15, size_units="pixels", pickable=False))
+    if not dashed.empty:  # NULL-path trips: faint straight line, flagged in the tooltip
+        layers.append(pdk.Layer(
+            "PathLayer", id="trips_missing", data=dashed, get_path="path",
+            get_color=[138, 146, 163, 150], get_width=2, width_units="pixels",
+            width_min_pixels=1, pickable=True))
+
+if show_events and events:
+    for kind in ("fill", "harsh", "stop"):
+        sub = [e for e in events if e["kind"] == kind]
+        if sub:
+            ed = pd.DataFrame(sub)
+            ed["fill"] = [EVENT_RGB[kind] + [235]] * len(ed)
+            ed["name"] = EVENT_NAME[kind] + " · " + ed["detail"]
+            layers.append(pdk.Layer(
+                "ScatterplotLayer", id=f"ev_{kind}", data=ed, get_position=["lon", "lat"],
+                get_radius="radius", radius_units="pixels", radius_min_pixels=4,
+                get_fill_color="fill", pickable=True, stroked=True,
+                get_line_color=[255, 255, 255, 230], line_width_min_pixels=1))
+
+view = fit_view(all_lats, all_lons)
+event = st.pydeck_chart(
+    pdk.Deck(layers=layers, initial_view_state=view, map_style=theme.MAP_STYLE,
+             tooltip={"html": "<b>{name}</b>",
+                      "style": {"backgroundColor": theme.INK, "color": "white",
+                                "fontSize": "12px", "borderRadius": "8px"}}),
+    on_select="rerun", selection_mode="single-object", key="mapsel",
+    use_container_width=True)
+
+# legend strip under the map
+leg = (f'<span style="color:{theme.MUTED}">tracks coloured by day · width by class</span>'
+       ' &nbsp; '
+       f'<span class="dot" style="background:rgb{tuple(EVENT_RGB["fill"])}"></span>fill'
+       f' &nbsp;<span class="dot" style="background:rgb{tuple(EVENT_RGB["harsh"])}"></span>harsh'
+       f' &nbsp;<span class="dot" style="background:rgb{tuple(EVENT_RGB["stop"])}"></span>long stop')
+st.markdown(f'<div class="tt-legend" style="font-weight:500">{leg}</div>', unsafe_allow_html=True)
+if capped:
+    st.caption(f"Showing the {MAX_TRIPS} most recent trips. Narrow the date range to see all.")
+
+# --- process map selection ------------------------------------------------
+objects = {}
+if event is not None:
+    try:
+        objects = event["selection"]["objects"] or {}
+    except Exception:
+        objects = {}
+clicked_event = None
+for layer_id, kind in (("ev_harsh", "harsh"), ("ev_fill", "fill"), ("ev_stop", "stop")):
+    if objects.get(layer_id):
+        o = objects[layer_id][0]
+        clicked_event = {"kind": kind, "ts": int(o["ts"]), "lat": o.get("lat"),
+                         "lon": o.get("lon"), "detail": o.get("detail", "")}
+        break
+if clicked_event:
+    st.session_state["sel_event"] = clicked_event
+elif objects.get("trips"):
+    ts = int(objects["trips"][0]["start_ts"])
+    st.session_state["play_trip"] = ts
+    st.session_state.pop("sel_event", None)
+
+# --- playback + event drill-in --------------------------------------------
+st.markdown("### Playback")
+rec_by_ts = {r["start_ts"]: r for r in records}
+option_ts = [None] + [r["start_ts"] for r in records]
 
 
-def d(a, b):
-    return round(a - b) if has_prev else None
+def trip_label(ts):
+    if ts is None:
+        return "— pick a trip —"
+    r = rec_by_ts.get(ts)
+    when = datetime.fromtimestamp(ts, timezone.utc).strftime("%d %b %H:%M")
+    return f"{when} · {CLASS_LABELS.get(r['journey_class'], r['journey_class'])} · {r['distance_km']} km"
 
 
-s1, s2, s3, s4, s5 = st.columns(5)
-with s1:
-    metric_card("Active days", cur["days"], delta=d(cur["days"], prev["days"]))
-with s2:
-    metric_card("Route trips", cur["journeys"], delta=d(cur["journeys"], prev["journeys"]))
-with s3:
-    metric_card("Route distance", f"{cur['km']:,.0f}", "km", delta=d(cur["km"], prev["km"]))
-with s4:
-    metric_card("Places visited", cur["places"], delta=d(cur["places"], prev["places"]))
-with s5:
-    metric_card("Longest trip", f"{longest.distance_m / 1000:,.0f}" if longest is not None else "—",
-                "km", hint=theme.fmt_dt(longest.start_ts, False) if longest is not None else None)
+if st.session_state.get("play_trip") not in option_ts:
+    st.session_state["play_trip"] = None
+sel_trip_ts = st.selectbox("Play back a trip", option_ts, key="play_trip",
+                           format_func=trip_label,
+                           on_change=lambda: st.session_state.pop("sel_event", None))
 
-# --- cost row (whole period; not class-filtered) --------------------------
-filled = db.scalar("SELECT COALESCE(SUM(volume_l),0) FROM fillings WHERE ts BETWEEN ? AND ?",
-                   (from_ts, to_ts), 0) or 0
-diesel = config.RATES["diesel_kes_per_l"]
-km_rates = {c: config.RATES[f"{c}_kes_per_km"] for c in ROUTE_CLASSES}
-all_routes = [(r.journey_character, r.distance_m) for r in routes.itertuples()]
+sel_event = st.session_state.get("sel_event")
 
-st.markdown('<div style="height:.5rem"></div>', unsafe_allow_html=True)
-ccols = st.columns(5)
-with ccols[0]:
-    metric_card("Fuel bought", format_kes(estimate.fuel_cost(filled, diesel)),
-                hint=f"at KES {diesel}/L pump price")
-if any(v is not None for v in km_rates.values()):
-    total, _, incl, excl = estimate.revenue_by_class(all_routes, km_rates)
-    foot = "Includes: " + ", ".join(CLASS_LABELS[c] for c in incl)
-    if excl:
-        foot += " · Excludes: " + ", ".join(CLASS_LABELS[c] for c in excl) + " (no rate)"
-    with ccols[1]:
-        metric_card("Est. revenue", format_kes(total), hint=foot)
 
-# --- what-if rate calculator ----------------------------------------------
-with st.expander("What-if rate calculator"):
-    st.markdown("Enter hypothetical rates per kilometre to see what this period "
-                "would be worth.")
-    w = st.columns(3)
-    inputs = {}
-    for col, c in zip(w, ROUTE_CLASSES):
-        inputs[c] = col.number_input(f"{CLASS_LABELS[c].title()} KES/km",
-                                     value=km_rates[c], min_value=0.0, step=5.0, key=f"wi_{c}")
-        if inputs[c] is None:
-            col.caption("e.g. 95")
-    if st.button("Calculate", type="primary"):
-        total, breakdown, incl, _ = estimate.revenue_by_class(all_routes,
-                                                              {c: inputs[c] for c in ROUTE_CLASSES})
-        st.session_state["whatif"] = (total, breakdown, incl)
-    if st.session_state.get("whatif"):
-        total, breakdown, incl = st.session_state["whatif"]
-        for c in incl:
-            b = breakdown[c]
-            st.markdown(f"{CLASS_LABELS[c].title()}: {b['km']:,.0f} km × "
-                        f"KES {b['rate']:,.0f} = **{format_kes(b['kes'])}**")
-        st.markdown(f"**Total: {format_kes(total)}**")
-        st.caption("What-if calculation. Not stored. Not an actual estimate.")
+def positions_between(lo, hi):
+    return [list(x) for x in db.q(
+        "SELECT lon, lat, ts FROM positions WHERE ts BETWEEN ? AND ? ORDER BY ts",
+        (lo, hi)).itertuples(index=False)]
 
-# --- weekly activity strip ------------------------------------------------
-if not fj.empty:
-    with st.container(border=True):
-        present = [c for c in ROUTE_CLASSES if (fj["journey_character"] == c).any()]
-        legend = " ".join(
-            f'<span><span class="dot" style="background:{TRIP_CLASS_COLORS[c]}"></span>'
-            f'{CLASS_LABELS[c]}</span>' for c in present)
-        st.markdown(f'<div class="tt-legend">{legend}</div>', unsafe_allow_html=True)
 
-        monthly = span / 604800 > 12
-
-        def bucket(ts):
-            dt = datetime.fromtimestamp(ts, timezone.utc)
-            return dt.strftime("%b %Y") if monthly else (dt - timedelta(days=dt.weekday())).strftime("%d %b")
-
-        strip = fj.copy()
-        strip["bucket"] = strip["start_ts"].apply(bucket)
-        strip["Class"] = strip["journey_character"].map(CLASS_LABELS)
-        g = strip.groupby(["bucket", "Class"]).size().reset_index(name="trips")
-        fig = px.bar(g, x="bucket", y="trips", color="Class",
-                     color_discrete_map={CLASS_LABELS[c]: TRIP_CLASS_COLORS[c] for c in ROUTE_CLASSES})
-        fig.update_layout(height=110, margin=dict(l=0, r=0, t=2, b=2), showlegend=False,
-                          hovermode="x unified", bargap=0.35, xaxis_title=None, yaxis_title=None,
-                          paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                          font=dict(family=theme.FONT, size=11, color=theme.MUTED))
-        fig.update_yaxes(visible=False)
-        fig.update_xaxes(showgrid=False, tickfont=dict(color=theme.MUTED, size=11), automargin=True)
-        fig.update_traces(hovertemplate="%{fullData.name}: %{y} trips<extra></extra>")
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-map_slot = st.container()
-
-# --- Top routes / Top places (selectable) ---------------------------------
-st.session_state.setdefault("sel_nonce", 0)
-nonce = st.session_state.sel_nonce
-sel_corridor, sel_place = None, None
-left, right = st.columns(2)
-with left:
-    st.subheader("Top routes")
-    if corr_df.empty:
-        empty_state("No routes for this selection")
+if sel_event:
+    ev = sel_event
+    when = datetime.fromtimestamp(ev["ts"], timezone.utc).strftime("%d %b %Y · %H:%M UTC")
+    ctrip = containing_trip(ev["ts"])
+    where = ev.get("detail", "")
+    ctx = (f"during the {CLASS_LABELS.get(ctrip['journey_class'], ctrip['journey_class'])} "
+           f"trip of {datetime.fromtimestamp(ctrip['start_ts'], timezone.utc):%d %b %H:%M}"
+           if ctrip else "while parked (not inside a trip)")
+    a, b = st.columns([3, 1])
+    with a:
+        st.markdown(
+            f'<div class="tt-card"><div class="lbl">{EVENT_NAME[ev["kind"]]}</div>'
+            f'<div style="margin:.3rem 0 .1rem"><b>{where}</b></div>'
+            f'<div class="tt-sub">{when} · {ctx}</div></div>', unsafe_allow_html=True)
+    with b:
+        if st.button("Clear event", use_container_width=True):
+            st.session_state.pop("sel_event", None)
+            st.rerun()
+    if ctrip:
+        pts = positions_between(ctrip["start_ts"], ctrip["end_ts"])
+        components.html(track_player.player_html(
+            pts, color=ctrip["color"], focus_s=ev["ts"] - ctrip["start_ts"],
+            label=f'Trip of {datetime.fromtimestamp(ctrip["start_ts"], timezone.utc):%d %b} — '
+                  f'playhead at the event'),
+            height=track_player.player_total_height())
     else:
-        show = corr_df.head(5).assign(Route=lambda x: x["A"] + " – " + x["B"])
-        ev = st.dataframe(
-            show[["Route", "Trips", "Distance", "Avg duration", "Avg fuel", "L/100km"]],
-            hide_index=True, use_container_width=True, on_select="rerun",
-            selection_mode="single-row", key=f"routes_{nonce}",
-            column_config={
-                "Distance": st.column_config.NumberColumn("Distance (km)", format="%d"),
-                "Avg duration": st.column_config.NumberColumn("Avg duration (h)", format="%.1f"),
-                "Avg fuel": st.column_config.NumberColumn("Avg fuel (L)", format="%d"),
-                "L/100km": st.column_config.NumberColumn("L/100km", format="%.1f")})
-        if ev.selection.rows:
-            sel_corridor = show.iloc[ev.selection.rows[0]]["key"]
-with right:
-    st.subheader("Top places")
-    if places_df.empty:
-        empty_state("No places visited in this period")
-    else:
-        show = places_df.head(5).copy()
-        show["Time there"] = show["dwell_s"].apply(theme.fmt_dur)
-        show["Last visited"] = show["last_ts"].apply(relative_day)
-        ev = st.dataframe(
-            show[["label", "Time there", "visits", "Last visited"]], hide_index=True,
-            use_container_width=True, on_select="rerun", selection_mode="single-row",
-            key=f"places_{nonce}",
-            column_config={"label": "Place", "visits": st.column_config.NumberColumn("Visits")})
-        if ev.selection.rows:
-            sel_place = int(show.iloc[ev.selection.rows[0]]["place_id"])
+        pts = positions_between(ev["ts"] - 300, ev["ts"] + 300)
+        components.html(track_player.player_html(
+            pts, color=EVENT_RGB[ev["kind"]], focus_s=300,
+            label="10-minute window around the event"),
+            height=track_player.player_total_height())
+elif sel_trip_ts is not None and sel_trip_ts in rec_by_ts:
+    r = rec_by_ts[sel_trip_ts]
+    pts = positions_between(r["start_ts"], r["end_ts"])
+    components.html(track_player.player_html(pts, color=r["color"], label=trip_label(sel_trip_ts)),
+                    height=track_player.player_total_height())
+else:
+    st.caption("Click an event pin on the map, or pick a trip above, to play it back. "
+               "The animated head shows direction; scrub or change speed in the player.")
 
-if (sel_corridor or sel_place is not None) and st.button("Clear selection"):
-    st.session_state.sel_nonce += 1
-    st.rerun()
+# --- Top places (no regression) -------------------------------------------
+st.markdown('<hr/>', unsafe_allow_html=True)
+st.subheader("Top places")
+if places_df.empty:
+    empty_state("No places visited in this period")
+else:
+    show = places_df.head(6).copy()
+    show["Time there"] = show["dwell_s"].apply(theme.fmt_dur)
+    show["Last visited"] = show["last_ts"].apply(relative_day)
+    st.dataframe(show[["label", "Time there", "visits", "Last visited"]], hide_index=True,
+                 use_container_width=True,
+                 column_config={"label": "Place", "visits": st.column_config.NumberColumn("Visits")})
 
-# --- needs-label callout --------------------------------------------------
 unlabeled = db.q("SELECT label, ROUND(lat,5) lat, ROUND(lon,5) lon FROM places WHERE needs_label=1")
 if not unlabeled.empty:
     with st.expander(f"{len(unlabeled)} place(s) need a better name — edit places.yaml"):
@@ -314,56 +439,38 @@ if not unlabeled.empty:
         st.code(pyaml.read_text() if pyaml.exists()
                 else "- label: Athi River yard\n  lat: -1.437\n  lon: 36.961\n", language="yaml")
 
-# --- render the map into the top slot --------------------------------------
-with map_slot:
-    if fj.empty:
-        empty_state(f"No {CLASS_LABELS.get(char, 'route')} trips in this period.")
-    else:
-        layers = []
-        if not corr_df.empty:
-            m = corr_df.copy()
-            base_w = m["Trips"].clip(lower=1).add(1).clip(upper=8)
-            m["width"] = [min(12, w * 1.5) if k == sel_corridor else w
-                          for w, k in zip(base_w, m["key"])]
-            m["color"] = ([theme.CORRIDOR_RGB + [180]] * len(m) if sel_corridor is None
-                          else [theme.CORRIDOR_RGB + ([255] if k == sel_corridor else [76])
-                                for k in m["key"]])
-            m["name"] = (m["A"] + " – " + m["B"] + " · " + m["Trips"].astype(str) + " trips · "
-                         + m["Distance"].astype(str) + " km")
-            layers.append(pdk.Layer(
-                "PathLayer", data=m, get_path="path", get_color="color", get_width="width",
-                width_units="pixels", width_min_pixels=2, width_max_pixels=12,
-                pickable=True, cap_rounded=True, joint_rounded=True))
-        if not places_df.empty:
-            pl = places_df.copy()
-            base_r = (pl["dwell_s"].clip(lower=1) ** 0.5 * 40).clip(lower=200)
-            pl["radius"] = [r * 1.5 if pid == sel_place else r for r, pid in zip(base_r, pl["place_id"])]
-            alpha = [255 if pid == sel_place else 70 for pid in pl["place_id"]] \
-                if sel_place is not None else [200] * len(pl)
-            pl["fill"] = [theme.PLACE_RGB + [a] for a in alpha]
-            pl["name"] = pl["label"] + " · " + pl["dwell_s"].apply(theme.fmt_dur)
-            layers.append(pdk.Layer(
-                "ScatterplotLayer", data=pl, get_position=["lon", "lat"], get_radius="radius",
-                get_fill_color="fill", radius_min_pixels=5, radius_max_pixels=30, pickable=True,
-                stroked=True, get_line_color=[255, 255, 255, 230], line_width_min_pixels=1))
-            # Place names show on hover (tooltip), not as on-map labels — keeps the
-            # map uncluttered at every zoom.
+# --- Route summary + cost / what-if (kept; tucked away) --------------------
+all_routes = [(jc, dm) for jc, dm in db.q(
+    "SELECT journey_character, distance_m FROM journeys WHERE is_local=0 "
+    "AND start_ts BETWEEN ? AND ?", (from_ts, to_ts)).itertuples(index=False)]
+diesel = config.RATES["diesel_kes_per_l"]
+km_rates = {c: config.RATES[f"{c}_kes_per_km"] for c in ROUTE_CLASSES}
+filled = db.scalar("SELECT COALESCE(SUM(volume_l),0) FROM fillings WHERE ts BETWEEN ? AND ?",
+                   (from_ts, to_ts), 0) or 0
 
-        if sel_corridor and not corr_df.empty:
-            path = corr_df.loc[corr_df["key"] == sel_corridor, "path"].iloc[0]
-            view = fit_view([p[1] for p in path], [p[0] for p in path])
-        elif sel_place is not None and sel_place in P:
-            view = pdk.ViewState(latitude=P[sel_place].lat, longitude=P[sel_place].lon, zoom=12)
-        elif not places_df.empty:
-            view = pdk.ViewState(latitude=float(places_df["lat"].mean()),
-                                 longitude=float(places_df["lon"].mean()), zoom=6)
-        else:
-            view = fit_view([P[k].lat for k in P], [P[k].lon for k in P])
-
-        st.pydeck_chart(pdk.Deck(
-            layers=layers, initial_view_state=view, map_style=theme.MAP_STYLE,
-            tooltip={"html": "<b>{name}</b>",
-                     "style": {"backgroundColor": theme.INK, "color": "white",
-                               "fontSize": "12px", "borderRadius": "8px"}}))
-        st.caption("Blue lines: routes (thicker = more trips). Dark bubbles: places "
-                   "(bigger = more time). The journey ledger is on the Audit Export page.")
+with st.expander("Cost & what-if"):
+    cc = st.columns(2)
+    with cc[0]:
+        metric_card("Fuel bought", format_kes(estimate.fuel_cost(filled, diesel)),
+                    hint=f"at KES {diesel}/L pump price")
+    if any(v is not None for v in km_rates.values()):
+        total, _, incl, excl = estimate.revenue_by_class(all_routes, km_rates)
+        foot = "Includes: " + ", ".join(CLASS_LABELS[c] for c in incl)
+        if excl:
+            foot += " · Excludes: " + ", ".join(CLASS_LABELS[c] for c in excl) + " (no rate)"
+        with cc[1]:
+            metric_card("Est. revenue", format_kes(total), hint=foot)
+    st.markdown("Enter hypothetical KES/km to value this period:")
+    w = st.columns(3)
+    inputs = {c: w[i].number_input(f"{CLASS_LABELS[c].title()} KES/km", value=km_rates[c],
+                                   min_value=0.0, step=5.0, key=f"wi_{c}")
+              for i, c in enumerate(ROUTE_CLASSES)}
+    if st.button("Calculate", type="primary"):
+        total, breakdown, incl, _ = estimate.revenue_by_class(
+            all_routes, {c: inputs[c] for c in ROUTE_CLASSES})
+        for c in incl:
+            b = breakdown[c]
+            st.markdown(f"{CLASS_LABELS[c].title()}: {b['km']:,.0f} km × KES {b['rate']:,.0f} "
+                        f"= **{format_kes(b['kes'])}**")
+        st.markdown(f"**Total: {format_kes(total)}**")
+        st.caption("What-if only. Not stored, not an actual estimate.")

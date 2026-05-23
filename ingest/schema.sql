@@ -200,6 +200,21 @@ CREATE TABLE IF NOT EXISTS corridors (
     UNIQUE (place_a_id, place_b_id)
 );
 
+-- Per-trip GPS paths (RDP-simplified) for the Map's multi-trip view + playback.
+-- Built over ALL trips. A trip with no GPS in its window gets point_count=0 and a
+-- NULL path (logged, never dropped); the Map falls back to a dashed straight line
+-- (start->end from `trips`). Display colour is derived at render time (date->palette),
+-- not stored here, so the palette can change without re-enriching.
+CREATE TABLE IF NOT EXISTS trip_paths (
+    unit_id       INTEGER NOT NULL,
+    start_ts      INTEGER NOT NULL,
+    end_ts        INTEGER NOT NULL,
+    journey_class TEXT,            -- long_haul|regional|local|yard (journey containing the trip)
+    point_count   INTEGER,         -- RDP-simplified point count; 0 = no GPS (NULL path)
+    path_geojson  TEXT,            -- [[lon,lat],…] RDP-simplified, or NULL
+    PRIMARY KEY (unit_id, start_ts)
+);
+
 CREATE TABLE IF NOT EXISTS trip_metrics (
     unit_id           INTEGER NOT NULL,
     start_ts          INTEGER NOT NULL,
