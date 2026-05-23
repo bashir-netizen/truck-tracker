@@ -125,3 +125,21 @@ specific workshop), an in-app editor would beat hand-editing `places.yaml`:
 
 **Revisit when:** the dashboard sees enough use that manual YAML editing feels like
 friction. For now (click marker → edit `places.yaml` → commit), manual editing is acceptable.
+
+## Places — typing & geocoding (deferred)
+Typed places + the dwell-time signal shipped (Task 6): each place carries a `type`
+(depot/destination/transit/customer/workshop) and a dwell-derived `dwell_pattern_hint`
++ `suggested_type_from_dwell` the Map surfaces for review. Still deferred:
+- **Auto-geocoding** (OSM Nominatim + optional Google Places) to suggest names *and*
+  types for new clusters; the dwell hint becomes one signal among several. The seam is
+  `enrich/geocode.py::suggest_place` → a git-ignored `enrich/.suggested_places.yaml` the
+  owner promotes into `places.yaml`.
+- **On-highway vs off-highway detection** (needs road-graph/road-class data) to sharpen
+  the transit-vs-customer call — currently a brief stop is just suggested `transit?`.
+- **Time-of-day dwell patterns** (overnight vs daytime stays) as a further signal.
+- **Customer-site identification** from a Genwatt-provided customer list (CSV upload →
+  auto-tag matching clusters as `customer`).
+- **In-app place editor** and **cluster merging** in the UI (see "Places editor" above).
+
+**Revisit when:** clusters accumulate faster than hand-typing keeps up, or Genwatt shares
+a customer list. For now, the dwell summary + Map callouts make manual typing low-effort.

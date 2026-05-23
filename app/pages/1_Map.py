@@ -37,6 +37,11 @@ CLASS_LABELS = getattr(theme, "CLASS_LABELS", {
     "long_haul": "long haul", "regional": "regional", "local": "local", "yard": "yard"})
 CLASS_WIDTH = getattr(theme, "CLASS_WIDTH", {
     "long_haul": 6, "regional": 5, "local": 4, "yard": 3})
+# A dwell-suggested type ("customer?") -> the places.yaml type it maps to, and a
+# phrase for the mismatch callout. rest?/overnight? have no settable type -> no callout.
+SUGGEST_REAL = {"transit?": "transit", "customer?": "customer", "depot?": "depot"}
+SUGGEST_PHRASE = {"transit": "a transit stop", "customer": "a customer site",
+                  "depot": "your depot / home base"}
 MAX_TRIPS = 50
 LONG_STOP_S = 7200          # 2 h
 EVENT_RGB = {"fill": [29, 111, 184], "harsh": [196, 61, 47], "stop": [91, 103, 112]}
@@ -399,12 +404,56 @@ for layer_id, kind in (("ev_harsh", "harsh"), ("ev_fill", "fill"), ("ev_stop", "
         clicked_event = {"kind": kind, "ts": int(o["ts"]), "lat": o.get("lat"),
                          "lon": o.get("lon"), "detail": o.get("detail", "")}
         break
+clicked_place = int(objects["places"][0]["place_id"]) if objects.get("places") else None
 if clicked_event:
     st.session_state["sel_event"] = clicked_event
+    st.session_state.pop("sel_place", None)
+elif clicked_place is not None:
+    st.session_state["sel_place"] = clicked_place
+    st.session_state.pop("sel_event", None)
 elif objects.get("trips"):
     ts = int(objects["trips"][0]["start_ts"])
     st.session_state["play_trip"] = ts
     st.session_state.pop("sel_event", None)
+    st.session_state.pop("sel_place", None)
+
+# --- selected place: dwell-signal panel -----------------------------------
+sel_place = st.session_state.get("sel_place")
+if sel_place is not None:
+    prow = db.q("SELECT label, type, median_dwell_s, dwell_pattern_hint, "
+                "suggested_type_from_dwell FROM places WHERE place_id=?", (sel_place,))
+    if prow.empty:
+        st.session_state.pop("sel_place", None)
+    else:
+        r = prow.iloc[0]
+        typ = r["type"] or "destination"
+        nvis = db.scalar("SELECT COUNT(*) FROM place_visits WHERE place_id=?", (sel_place,), 0)
+        body = (f'<div class="lbl">place</div>'
+                f'<div style="margin:.3rem 0 .1rem"><b>{r["label"]}</b> '
+                f'<span class="tt-pill neutral">{typ}</span></div>')
+        if pd.isna(r["median_dwell_s"]):
+            body += '<div class="tt-sub">No dwell records for this place yet.</div>'
+        else:
+            med = theme.fmt_dur(int(r["median_dwell_s"]))
+            pat = r["dwell_pattern_hint"] or "—"
+            sug = r["suggested_type_from_dwell"] or "—"
+            body += (f'<div class="tt-sub">Visited {nvis} time{"s" if nvis != 1 else ""} · '
+                     f'{med} median stay · pattern: {pat} stops</div>'
+                     f'<div class="tt-sub">Suggested type (from dwell): <b>{sug}</b></div>')
+            mapped = SUGGEST_REAL.get(sug)
+            # depot is owner-asserted ground truth — show the suggestion, but don't
+            # nag a places.yaml change for it (the dwell summary still flags it).
+            if mapped and mapped != typ and typ != "depot":
+                body += (f'<div style="margin-top:.4rem;color:var(--accent)">→ This place’s '
+                         f'dwell pattern suggests it may be {SUGGEST_PHRASE[mapped]}. '
+                         f'Update <code>places.yaml</code> if appropriate.</div>')
+        pa, pb = st.columns([3, 1])
+        with pa:
+            st.markdown(f'<div class="tt-card">{body}</div>', unsafe_allow_html=True)
+        with pb:
+            if st.button("Clear place", width="stretch"):
+                st.session_state.pop("sel_place", None)
+                st.rerun()
 
 # --- playback + event drill-in --------------------------------------------
 st.markdown("### Playback")

@@ -72,6 +72,50 @@ def _short_name(location):
     return parts[1] if len(parts) > 1 else parts[0]
 
 
+def _fmt_dur(s):
+    """Compact duration for the enrich-side summary print ('5h22m', '18m', '—')."""
+    if s is None:
+        return "—"
+    s = int(s)
+    h, m = s // 3600, (s % 3600) // 60
+    return f"{h}h{m:02d}m" if h else f"{m}m"
+
+
+def _dwell_pattern(median_s):
+    """Median stop duration -> categorical pattern (thresholds in config)."""
+    if median_s < config.DWELL_BRIEF_MAX_S:
+        return "brief"
+    if median_s < config.DWELL_MEDIUM_MAX_S:
+        return "medium"
+    if median_s < config.DWELL_LONG_MAX_S:
+        return "long"
+    return "overnight"
+
+
+def _suggested_type(pattern, visit_count):
+    """A *suggested* place type from dwell pattern + visit frequency. '?' = not authoritative."""
+    if pattern == "brief":
+        return "transit?"      # quick stop — fuel, rest, errand
+    if pattern == "medium":
+        return "rest?"         # driver break or a small pickup
+    if pattern == "long":
+        return "customer?"     # hours on site = bulk loading / unloading
+    return "depot?" if visit_count >= config.DWELL_HIGH_VISIT_COUNT else "overnight?"
+
+
+def _print_dwell_summary(con, by_place):
+    """Per-place dwell signature: place · visits · median · pattern · type · suggests."""
+    rows = con.execute(
+        "SELECT place_id, label, type, median_dwell_s, dwell_pattern_hint, "
+        "suggested_type_from_dwell FROM places ORDER BY median_dwell_s DESC").fetchall()
+    print("  place dwell summary (place · visits · median · pattern · type · suggests):")
+    print(f"    {'place':<26} {'vis':>3} {'median':>7}  {'pattern':<9} {'type':<11} suggests")
+    for pid, label, typ, median, pattern, sug in rows:
+        n = len(by_place.get(int(pid), []))
+        print(f"    {(label or '—')[:26]:<26} {n:>3} {_fmt_dur(median):>7}  "
+              f"{(pattern or '—'):<9} {(typ or '—'):<11} {sug or '—'}")
+
+
 def rebuild(con, unit_id):
     con.execute("DELETE FROM places")
 
@@ -143,6 +187,24 @@ def rebuild(con, unit_id):
     con.executemany(
         "INSERT OR IGNORE INTO place_visits (place_id, ts, duration_s) VALUES (?,?,?)",
         visits_rows)
+
+    # --- dwell signal (Task 6 B): per-place stop-duration stats from the
+    # nearest-based visits, plus a pattern and a *suggested* type for review.
+    by_place = {}
+    for pid, dur in con.execute("SELECT place_id, duration_s FROM place_visits"):
+        by_place.setdefault(int(pid), []).append(int(dur or 0))
+    for pid, durs in by_place.items():
+        arr = np.array(sorted(durs))
+        median = int(np.median(arr))
+        pattern = _dwell_pattern(median)
+        con.execute(
+            "UPDATE places SET median_dwell_s=?, p25_dwell_s=?, p75_dwell_s=?, "
+            "longest_dwell_s=?, shortest_dwell_s=?, dwell_pattern_hint=?, "
+            "suggested_type_from_dwell=? WHERE place_id=?",
+            (median, int(np.percentile(arr, 25)), int(np.percentile(arr, 75)),
+             int(arr.max()), int(arr.min()), pattern, _suggested_type(pattern, len(arr)), pid))
+
+    _print_dwell_summary(con, by_place)
     return len(rows)
 
 

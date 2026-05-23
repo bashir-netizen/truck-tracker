@@ -59,6 +59,14 @@ PLACE_EPS_M = 800
 PLACE_MIN_SAMPLES = 1
 PLACE_MIN_DWELL_S = 1800
 
+# Dwell-time classification (Task 6 B): median stop duration -> a pattern, and
+# pattern (+ visit frequency) -> a *suggested* place type. Suggestions only —
+# the owner confirms via places.yaml. "On-highway" refinement is deferred.
+DWELL_BRIEF_MAX_S = 30 * 60     # median < 30 min -> "brief"    (transit / fuel)
+DWELL_MEDIUM_MAX_S = 2 * 3600   # < 2 h           -> "medium"   (rest / small pickup)
+DWELL_LONG_MAX_S = 8 * 3600     # < 8 h           -> "long"     (customer loading)
+DWELL_HIGH_VISIT_COUNT = 3      # >= this many visits = a regular (depot-like) place
+
 # --- Anomaly thresholds (Stage 3) -----------------------------------------
 
 FUEL_DROP_PCT = 10          # level drop > this % between readings => possible theft
