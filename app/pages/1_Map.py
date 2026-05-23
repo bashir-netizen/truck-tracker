@@ -183,6 +183,17 @@ tdf = trips if char is None else trips[trips["journey_class"] == char]
 tdf = tdf.assign(
     day=tdf["start_ts"].map(lambda t: datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%d")))
 
+# marker key — what the trip start/end/direction glyphs mean, by the controls so
+# it's seen without scrolling down to the under-map legend.
+_KEY_RED = theme.TRIP_DATE_PALETTE[0]
+st.markdown(
+    f'<div class="tt-micro" style="display:flex;gap:1.2rem;flex-wrap:wrap;'
+    f'color:{theme.MUTED};margin:.1rem 0 .5rem">'
+    f'<span><span style="color:{_KEY_RED}">●</span> Trip start</span>'
+    f'<span><span style="color:{_KEY_RED}">○</span> Trip end</span>'
+    f'<span><span style="color:{theme.INK};font-weight:700">→</span> Direction</span>'
+    '</div>', unsafe_allow_html=True)
+
 # --- date legend / filter -------------------------------------------------
 day_counts = tdf.groupby("day").size().to_dict()
 ordered_days = sorted(day_counts, reverse=True)            # newest first (legend order)
@@ -381,7 +392,7 @@ event = st.pydeck_chart(
     width="stretch")
 
 # legend strip under the map
-leg = (f'<span style="color:{theme.MUTED}">tracks by day · width by class · ● start ○ end'
+leg = (f'<span style="color:{theme.MUTED}">tracks by day · width by class'
        '</span> &nbsp; '
        f'<span class="dot" style="background:rgb{tuple(EVENT_RGB["fill"])}"></span>⛽ fuel'
        f' &nbsp;<span class="dot" style="background:rgb{tuple(EVENT_RGB["harsh"])}"></span>⚠️ violation'

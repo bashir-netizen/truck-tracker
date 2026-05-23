@@ -99,7 +99,10 @@ class/destination/anomaly filters. Not blocking today — revisit at the first q
 Brightness-within-date (earlier trips darker, later lighter); numbered start markers
 ("1/2/3" per day); trip selection by clicking the start marker; hover-to-highlight (hovered
 path solid, others dim to 30%); perceptual palette (HCL/Oklab); date filter "context mode"
-(other dates dimmed but visible).
+(other dates dimmed but visible). Marker key shipped (● start / ○ end / → direction, by the
+controls); still to do — more distinctive end markers (a different shape, or an arrow tip
+pointing in the final direction of travel) and hover labels on the start/end markers showing
+the exact timestamp.
 
 ## Refresh button — deferred
 Auto-refresh every ~30 min while the page is open; webhook callback so the page auto-reloads
