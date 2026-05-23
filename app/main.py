@@ -71,15 +71,7 @@ score_s = f"{score:.1f}" if score is not None else "—"
 filled = psum("volume_l", table="fillings", ts="ts")
 diesel = config.RATES["diesel_kes_per_l"]
 
-# longest journey (for the subtitle)
 P = {int(r.place_id): r.label for r in db.q("SELECT place_id, label FROM places").itertuples()}
-lj = db.q("SELECT distance_m, journey_character, dest_place_id FROM journeys "
-          "WHERE start_ts BETWEEN ? AND ? ORDER BY distance_m DESC LIMIT 1", (frm, to))
-longest_bit = ""
-if not lj.empty and lj.iloc[0]["distance_m"]:
-    r = lj.iloc[0]
-    dest = P.get(int(r["dest_place_id"]), "—") if r["dest_place_id"] is not None else "—"
-    longest_bit = f" · longest: {CLASS_LABELS.get(r['journey_character'], 'trip')} to {dest}"
 
 
 def delta_pct(cur, prev):
@@ -101,8 +93,8 @@ with hl:
                 f'</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="tt-title">Your truck {PERIOD_WORD.get(label, "this period")}</div>',
                 unsafe_allow_html=True)
-    st.markdown(f'<div class="tt-sub">{active_days} active day{"s" if active_days != 1 else ""} · '
-                f'{dist_km:,.0f} km{longest_bit}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="tt-sub">{label} · is everything okay with the truck?</div>',
+                unsafe_allow_html=True)
 with hr:
     components.html(
         '<button onclick="window.top.print()" style="width:100%;font:600 13px '
@@ -112,7 +104,6 @@ with hr:
 
 items = status_panel.gather(frm, to)
 status_strip.render(items)
-st.caption(f"{label} · is everything okay with the truck?")
 
 # === Section 1 — Status ===================================================
 st.markdown('<div style="height:1.2rem"></div>', unsafe_allow_html=True)
@@ -171,7 +162,7 @@ for r in db.q("SELECT origin_place_id o, dest_place_id d, journey_character c FR
 NAMED = {int(x.place_id) for x in db.q("SELECT place_id FROM places WHERE needs_label=0").itertuples()}
 named_eps = endpoints & NAMED
 depot_lbls = places_meta.depot_labels()
-fallback_depot = max(origin_n, key=origin_n.get) if origin_n and not depot_lbls else None
+fallback_depot = max(origin_n, key=origin_n.get) if origin_n else None  # secondary to flags
 
 
 def _tag(pid):

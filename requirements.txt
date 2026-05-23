@@ -1,9 +1,13 @@
 requests
 pandas
 scikit-learn
-streamlit
 pydeck
 plotly
 pyyaml
 python-dotenv
 pytest
+
+# Pinned until components.html migration is done.
+# Streamlit warning: components.html deprecated ~2026-06-01.
+# See docs/streamlit-pin.md for rationale.
+streamlit==1.57.0
