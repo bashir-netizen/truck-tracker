@@ -104,6 +104,17 @@ controls); still to do — more distinctive end markers (a different shape, or a
 pointing in the final direction of travel) and hover labels on the start/end markers showing
 the exact timestamp.
 
+**Journey View shipped** (Task 8 — open one round trip from the Overview: outbound/return
+path, numbered waypoints, timeline, events). Deferred extensions:
+- Journey View **playback** (animate the truck moving along the path).
+- **Side-by-side journey comparison** (e.g. this month's Marsabit run vs last month's — same
+  route or a detour?).
+- **Unexpected-detour detection** — flag a journey whose path deviates significantly from the
+  most-common route for that destination.
+- **Per-journey analytics** — this trip's L/100km, violations, and stops vs the destination's
+  average; and picking among the N trips in a grouped Overview row (today the row opens the
+  latest).
+
 ## Refresh button — deferred
 Auto-refresh every ~30 min while the page is open; webhook callback so the page auto-reloads
 when the workflow completes; per-user audit log of manual refreshes.

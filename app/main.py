@@ -156,9 +156,10 @@ st.markdown('<div class="tt-h2">Where it went</div>', unsafe_allow_html=True)
 
 depot_ids = {int(r.place_id) for r in db.q("SELECT place_id FROM places WHERE type='depot'").itertuples()}
 depots = [P.get(i, "—") for i in depot_ids]
-rts = db.q("SELECT primary_destination_name dest, journey_class cls, total_distance_km km, "
-           "total_duration_s dur, via_places via, return_via_places rvia, start_ts, end_ts "
-           "FROM round_trips WHERE start_ts BETWEEN ? AND ? ORDER BY start_ts", (frm, to))
+rts = db.q("SELECT round_trip_id rtid, primary_destination_name dest, journey_class cls, "
+           "total_distance_km km, total_duration_s dur, via_places via, return_via_places rvia, "
+           "start_ts, end_ts FROM round_trips WHERE start_ts BETWEEN ? AND ? ORDER BY start_ts",
+           (frm, to))
 last_return = int(rts["end_ts"].max()) if not rts.empty else 0
 
 gcol, mcol = st.columns([3, 2])
@@ -181,11 +182,12 @@ with gcol:
             else:
                 key, title = "__yard__", "Yard movements"
             g = groups.setdefault(key, {"title": title, "cls": r.cls, "count": 0,
-                                        "last_start": 0, "last_end": 0, "km": 0.0, "dur": 0,
-                                        "via": [], "rvia": [], "dests": []})
+                                        "last_start": 0, "last_end": 0, "rtid": None,
+                                        "km": 0.0, "dur": 0, "via": [], "rvia": [], "dests": []})
             g["count"] += 1
-            if int(r.end_ts) >= g["last_end"]:        # track the most-recent trip's span
-                g["last_end"], g["last_start"] = int(r.end_ts), int(r.start_ts)
+            if int(r.end_ts) >= g["last_end"]:        # track the most-recent trip's span + id
+                g["last_end"], g["last_start"], g["rtid"] = (
+                    int(r.end_ts), int(r.start_ts), int(r.rtid))
             g["km"] += r.km or 0
             g["dur"] += int(r.dur or 0)
             g["via"] += json.loads(r.via)
@@ -211,10 +213,18 @@ with gcol:
                 context = "Around " + g["title"].replace("Local ", "").replace(" work", "")
             else:
                 context = "Within the yard"
-            journey_row.render(g["title"], CLASS_LABELS.get(g["cls"], g["cls"]), g["count"],
-                               context, _fmt_range(g["last_start"], g["last_end"]),
-                               g["km"] / g["count"], theme.fmt_dur(g["dur"] // g["count"]),
-                               multi=g["count"] > 1)
+            jc1, jc2 = st.columns([6, 1])
+            with jc1:
+                journey_row.render(g["title"], CLASS_LABELS.get(g["cls"], g["cls"]), g["count"],
+                                   context, _fmt_range(g["last_start"], g["last_end"]),
+                                   g["km"] / g["count"], theme.fmt_dur(g["dur"] // g["count"]),
+                                   multi=g["count"] > 1)
+            with jc2:
+                if g["rtid"] is not None and st.button(
+                        "View →", key=f"jv_open_{g['rtid']}", help="See this round trip on the map"):
+                    st.session_state["journey_rt"] = g["rtid"]
+                    st.query_params["round_trip"] = str(g["rtid"])
+                    st.switch_page("pages/1_Map.py")
 
     # currently out (left a depot, not yet returned)
     openj = db.q("SELECT dest_place_id, start_ts FROM journeys WHERE start_ts > ? "
