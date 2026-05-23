@@ -3,8 +3,8 @@
 # Note: Streamlit reads this at startup — a Cloud reboot is needed to apply it.
 [theme]
 base = "light"
-primaryColor = "#1F6FEB"
-backgroundColor = "#F7F8FA"
-secondaryBackgroundColor = "#FFFFFF"
-textColor = "#0F172A"
+primaryColor = "#c43d2f"
+backgroundColor = "#f7f4ef"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#0e1116"
 font = "sans serif"

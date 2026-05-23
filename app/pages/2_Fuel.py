@@ -33,10 +33,10 @@ fuel_eco = db.scalar("SELECT COALESCE(SUM(consumed_l),0) FROM trips "
 econ = (fuel_eco / (dist / 1000.0) * 100) if dist else 0
 
 cards_row([
-    dict(label="Consumed", value=f"{consumed:,.0f}", unit="L"),
-    dict(label="Filled", value=f"{filled:,.0f}", unit="L",
+    dict(label="Consumed", value=f"{consumed:,.0f}", unit="L", confidence="inferred"),
+    dict(label="Filled", value=f"{filled:,.0f}", unit="L", confidence="observed",
          hint=f"{db.scalar('SELECT COUNT(*) FROM fillings WHERE ts BETWEEN ? AND ?', (frm, to), default=0)} fills"),
-    dict(label="Avg economy", value=f"{econ:.1f}", unit="L/100km"),
+    dict(label="Avg economy", value=f"{econ:.1f}", unit="L/100km", confidence="inferred"),
 ])
 
 st.markdown('<hr/>', unsafe_allow_html=True)
@@ -56,7 +56,7 @@ else:
                       hovertemplate="%{x|%d %b %H:%M}<br>%{y:.1f} L/100km<extra></extra>")
     fig.update_xaxes(title=None)
     fig.update_yaxes(title=None)
-    st.plotly_chart(theme.style_fig(fig, height=260), use_container_width=True)
+    st.plotly_chart(theme.style_fig(fig, height=260), width="stretch")
 
 st.subheader("Fuel fillings")
 fills = db.q(
@@ -68,7 +68,7 @@ else:
     fills["When"] = pd.to_datetime(fills["ts"], unit="s", utc=True)
     st.dataframe(
         fills[["When", "volume_l", "level_before_l", "level_after_l"]],
-        hide_index=True, use_container_width=True,
+        hide_index=True, width="stretch",
         column_config={
             "When": st.column_config.DatetimeColumn("When", format="DD MMM YYYY, HH:mm"),
             "volume_l": st.column_config.NumberColumn("Filled", format="%.1f L"),

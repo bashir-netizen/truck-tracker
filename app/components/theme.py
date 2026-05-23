@@ -14,8 +14,8 @@ import config
 from app.components import db
 
 # -- palette ---------------------------------------------------------------
-ACCENT = config.ACCENT_COLOR          # burnt orange, used sparingly
-ACCENT_RGB = [31, 111, 235]           # primary blue
+ACCENT = config.ACCENT_COLOR          # Kenyan red — the one accent colour
+ACCENT_RGB = [196, 61, 47]            # = #c43d2f
 CORRIDOR_RGB = [71, 85, 105]          # neutral slate for route lines
 PLACE_RGB = [30, 41, 59]              # slate-dark place bubbles (labelled on map)
 
@@ -50,13 +50,26 @@ def date_colors(ordered_days):
 def hex_to_rgb(h):
     h = h.lstrip("#")
     return [int(h[i:i + 2], 16) for i in (0, 2, 4)]
-INK = "#0F172A"                       # slate ink (body text)
-MUTED = "#64748B"                     # secondary text
-HAIRLINE = "#E5E7EB"                  # borders / gridlines
-PAPER = "#F7F8FA"                     # cool near-white background
-CARD = "#FFFFFF"
-GOOD = "#16A34A"
-BAD = "#DC2626"
+
+
+# Design-system tokens — warm paper, one red accent; hierarchy by size/weight.
+INK = "#0e1116"          # near-black body text
+INK_MUTED = "#4a5260"    # secondary text
+INK_FAINT = "#8a92a3"    # tertiary text / labels
+MUTED = INK_MUTED        # back-compat alias (older pages import theme.MUTED)
+PAPER = "#f7f4ef"        # warm off-white app background
+SURFACE = "#ffffff"      # cards
+SURFACE_ALT = "#f0ebe2"  # warm inset / zebra
+CARD = SURFACE           # back-compat alias
+BORDER = "#e6e8ec"
+HAIRLINE = BORDER        # back-compat alias
+STATUS_OK = "#1d8a4a"
+STATUS_WARN = "#c47d1d"
+STATUS_CRITICAL = "#c43d2f"
+GOOD = STATUS_OK         # back-compat alias
+BAD = STATUS_CRITICAL    # back-compat alias
+SHADOW_SM = "0 1px 2px rgba(14,17,22,0.04)"
+SHADOW_MD = "0 1px 2px rgba(14,17,22,0.04), 0 4px 16px rgba(14,17,22,0.04)"
 
 FONT = ('-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, '
         'Arial, sans-serif')
@@ -74,69 +87,184 @@ WIALON_SCORE_NOTE = (
 
 _CSS = f"""
 <style>
-  :root {{ --accent: {ACCENT}; --ink: {INK}; --muted: {MUTED};
-           --hair: {HAIRLINE}; --paper: {PAPER}; }}
-  html, body, [class*="css"], .stApp {{ font-family: {FONT}; color: {INK}; }}
-  .stApp {{ background: {PAPER}; }}
+  :root {{
+    --bg: {PAPER}; --surface: {SURFACE}; --surface-alt: {SURFACE_ALT};
+    --ink: {INK}; --ink-muted: {INK_MUTED}; --ink-faint: {INK_FAINT};
+    --accent: {ACCENT}; --border: {BORDER};
+    --ok: {STATUS_OK}; --warn: {STATUS_WARN}; --critical: {STATUS_CRITICAL};
+    --shadow-sm: {SHADOW_SM}; --shadow-md: {SHADOW_MD};
+    --r-card: 12px; --r-btn: 8px; --r-pill: 999px;
+    --t-h1: 36px; --t-h2: 24px; --t-h3: 18px;
+    --t-body: 15px; --t-small: 13px; --t-micro: 11px;
+  }}
+  html, body, [class*="css"], .stApp {{ font-family: {FONT}; color: var(--ink);
+    font-size: var(--t-body); }}
+  .stApp {{ background: var(--bg); }}
   #MainMenu, footer {{ visibility: hidden; }}
   .block-container {{ padding-top: 2.4rem; padding-bottom: 4rem; max-width: 1100px; }}
-  h1, h2, h3 {{ letter-spacing: -0.02em; font-weight: 680; }}
-  a {{ color: {ACCENT}; }}
-  /* widget labels must read as dark body text (belt-and-suspenders with config.toml) */
+  /* tabular numerals wherever figures matter */
+  .tt-card .val, .tt-num, [data-testid="stMetricValue"] {{
+    font-variant-numeric: tabular-nums; }}
+
+  /* type scale */
+  h1, .tt-h1 {{ font-size: var(--t-h1); font-weight: 700; letter-spacing: -0.02em;
+    line-height: 1.1; }}
+  h2, .tt-h2 {{ font-size: var(--t-h2); font-weight: 600; letter-spacing: -0.01em;
+    line-height: 1.2; }}
+  h3, .tt-h3 {{ font-size: var(--t-h3); font-weight: 600; line-height: 1.3; }}
+  .tt-body {{ font-size: var(--t-body); font-weight: 400; }}
+  .tt-small {{ font-size: var(--t-small); font-weight: 400; color: var(--ink-muted); }}
+  .tt-micro {{ font-size: var(--t-micro); font-weight: 500; letter-spacing: .04em; }}
+  a {{ color: var(--accent); }}
   [data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] p {{
-    color: {INK} !important; font-weight: 600; }}
+    color: var(--ink) !important; font-weight: 600; }}
 
-  .tt-strip {{ border-top: 1px solid {HAIRLINE}; border-bottom: 1px solid {HAIRLINE};
-    padding: .55rem 0 .15rem; margin: .4rem 0 1rem; }}
-  .tt-legend {{ display: flex; gap: 1.2rem; font-size: .8rem; color: {INK};
-    font-weight: 600; margin-bottom: .15rem; }}
-  .tt-legend .dot {{ display: inline-block; width: 9px; height: 9px; border-radius: 999px;
-    margin-right: .4rem; vertical-align: middle; }}
-  .tt-mix {{ font-size: 1.0rem; color: {INK}; margin: .2rem 0 .6rem; }}
-
+  /* header bits */
   .tt-eyebrow {{ text-transform: uppercase; letter-spacing: .14em;
-    font-size: .70rem; font-weight: 700; color: {MUTED}; }}
-  .tt-title {{ font-size: 2.0rem; font-weight: 720; margin: .1rem 0 .1rem; }}
-  .tt-sub {{ color: {MUTED}; font-size: .95rem; }}
+    font-size: var(--t-micro); font-weight: 700; color: var(--ink-faint); }}
+  .tt-title {{ font-size: var(--t-h1); font-weight: 700; letter-spacing: -0.02em;
+    line-height: 1.1; margin: .1rem 0; }}
+  .tt-sub {{ color: var(--ink-muted); font-size: var(--t-body); }}
+  .tt-mix {{ font-size: var(--t-body); color: var(--ink); margin: .2rem 0 .6rem; }}
 
-  .tt-card {{ background: {CARD}; border: 1px solid {HAIRLINE};
-    border-radius: 14px; padding: 1.0rem 1.1rem; height: 100%;
-    box-shadow: 0 1px 2px rgba(15,23,42,.06), 0 1px 3px rgba(15,23,42,.04); }}
+  /* cards */
+  .tt-card {{ background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r-card); padding: 1.0rem 1.1rem; height: 100%;
+    box-shadow: var(--shadow-sm); }}
   .tt-card .lbl {{ text-transform: uppercase; letter-spacing: .08em;
-    font-size: .68rem; font-weight: 700; color: {MUTED}; }}
-  .tt-card .val {{ font-size: 1.85rem; font-weight: 720; line-height: 1.05;
+    font-size: var(--t-micro); font-weight: 700; color: var(--ink-muted); }}
+  .tt-card .val {{ font-size: 34px; font-weight: 700; line-height: 1.05;
     margin-top: .35rem; }}
-  .tt-card .val .unit {{ font-size: .9rem; font-weight: 600; color: {MUTED};
-    margin-left: .25rem; }}
-  .tt-card .val.alert {{ color: {BAD}; }}
-  .tt-card.subtle {{ background: transparent; border-style: dashed;
-    box-shadow: none; }}
-  .tt-card.subtle .lbl {{ color: {MUTED}; }}
-  .tt-card.subtle .val {{ font-size: 1.3rem; color: {MUTED}; font-weight: 650; }}
-  .tt-card .delta {{ font-size: .8rem; font-weight: 600; margin-top: .4rem; }}
-  .tt-card .delta.up {{ color: {GOOD}; }} .tt-card .delta.down {{ color: {BAD}; }}
-  .tt-card .delta.flat {{ color: {MUTED}; }}
+  .tt-card .val .unit {{ font-size: var(--t-small); font-weight: 600;
+    color: var(--ink-muted); margin-left: .25rem; }}
+  .tt-card .val.alert {{ color: var(--critical); }}
+  .tt-card.subtle {{ background: transparent; border-style: dashed; box-shadow: none; }}
+  .tt-card.subtle .lbl {{ color: var(--ink-muted); }}
+  .tt-card.subtle .val {{ font-size: 22px; color: var(--ink-muted); font-weight: 650; }}
+  .tt-card .delta {{ font-size: var(--t-small); font-weight: 600; margin-top: .4rem; }}
+  .tt-card .delta.up {{ color: var(--ok); }} .tt-card .delta.down {{ color: var(--critical); }}
+  .tt-card .delta.flat {{ color: var(--ink-muted); }}
+  .tt-card .src {{ font-size: var(--t-micro); color: var(--ink-faint); margin-top: .35rem; }}
 
-  .tt-empty {{ border: 1px dashed {HAIRLINE}; border-radius: 14px;
-    padding: 1.6rem; text-align: center; color: {MUTED}; background: {CARD}; }}
-  .tt-empty .t {{ color: {INK}; font-weight: 650; margin-bottom: .25rem; }}
+  /* confidence badge (O / I / M) */
+  .tt-conf {{ display:inline-flex; align-items:center; justify-content:center;
+    width:16px; height:16px; border-radius:999px; font-size:10px; font-weight:700;
+    border:1px solid currentColor; cursor:default; vertical-align:middle; }}
+  .tt-conf.observed {{ color: var(--ok); }}
+  .tt-conf.inferred {{ color: var(--ink-muted); }}
+  .tt-conf.missing {{ color: var(--ink-faint); }}
 
+  /* pills */
+  .tt-pill {{ display:inline-block; padding:.08rem .5rem; border-radius:var(--r-pill);
+    font-size:var(--t-micro); font-weight:700; }}
+  .tt-pill.accent {{ background: var(--accent); color:#fff; }}
+  .tt-pill.neutral {{ background: var(--surface-alt); color: var(--ink-muted);
+    border:1px solid var(--border); }}
+  .tt-pill.high {{ background:#fbe3df; color:var(--critical); }}
+  .tt-pill.medium {{ background:#f6ecd6; color:#9a5b14; }}
+
+  /* strip / legend / empty / row */
+  .tt-strip {{ border-top:1px solid var(--border); border-bottom:1px solid var(--border);
+    padding:.55rem 0 .15rem; margin:.4rem 0 1rem; }}
+  .tt-legend {{ display:flex; gap:1.2rem; flex-wrap:wrap; font-size:var(--t-small);
+    color:var(--ink); font-weight:600; margin-bottom:.15rem; }}
+  .tt-legend .dot {{ display:inline-block; width:9px; height:9px; border-radius:999px;
+    margin-right:.4rem; vertical-align:middle; }}
+  .tt-empty {{ border:1px dashed var(--border); border-radius:var(--r-card);
+    padding:1.6rem; text-align:center; color:var(--ink-muted); background:var(--surface); }}
+  .tt-empty .t {{ color:var(--ink); font-weight:650; margin-bottom:.25rem; }}
   .tt-row {{ display:flex; justify-content:space-between; align-items:center;
-    padding:.6rem 0; border-bottom:1px solid {HAIRLINE}; }}
-  .tt-pill {{ display:inline-block; padding:.08rem .5rem; border-radius:999px;
-    font-size:.72rem; font-weight:700; }}
-  .tt-pill.high {{ background:#FEE2E2; color:{BAD}; }}
-  .tt-pill.medium {{ background:#FEF3C7; color:#B45309; }}
-  hr {{ border:none; border-top:1px solid {HAIRLINE}; margin:1.2rem 0; }}
+    padding:.6rem 0; border-bottom:1px solid var(--border); }}
+  hr {{ border:none; border-top:1px solid var(--border); margin:1.2rem 0; }}
+
+  /* sidebar: hide Streamlit's default page nav (we render our own) */
+  [data-testid="stSidebarNav"] {{ display: none; }}
+  .tt-navtitle {{ font-weight:700; font-size:var(--t-small); letter-spacing:.02em;
+    color:var(--ink); padding:.1rem .2rem .5rem; }}
+
+  /* print: a clean one-page audit document (hide chrome + interactive controls) */
+  @media print {{
+    [data-testid="stSidebar"], [data-testid="stHeader"], [data-testid="stToolbar"],
+    .stButton, [data-testid="stToggle"], [data-testid="stSlider"],
+    [data-testid="stSelectbox"], [data-testid="stSegmentedControl"],
+    [data-testid="stDateInput"], [data-testid="stExpander"], iframe {{ display:none !important; }}
+    .stApp {{ background:#fff !important; }}
+    .block-container {{ max-width:100% !important; padding-top:0 !important; }}
+    .tt-card {{ box-shadow:none !important; break-inside:avoid; }}
+  }}
+
+  /* mobile: comfortable single column at phone widths */
+  @media (max-width: 640px) {{
+    .block-container {{ padding-left:1rem; padding-right:1rem; }}
+    .tt-title {{ font-size:28px; }}
+    .tt-card .val {{ font-size:28px; }}
+  }}
 </style>
 """
 
 
+# -- confidence categories (Observed / Inferred / Missing) -----------------
+CONFIDENCE = {
+    "observed": {"label": "Observed", "letter": "O", "icon": "circle-check",
+                 "tooltip": "Measured directly by the tracker."},
+    "inferred": {"label": "Inferred", "letter": "I", "icon": "function-square",
+                 "tooltip": "Computed from tracker data with assumptions."},
+    "missing": {"label": "Missing", "letter": "M", "icon": "circle-help",
+                "tooltip": "Needs external data we don't have yet."},
+}
+
+
+def confidence_badge(kind):
+    """Small O/I/M pill (colour by category) with a hover tooltip. HTML string."""
+    c = CONFIDENCE.get(kind)
+    if not c:
+        return ""
+    return (f'<span class="tt-conf {kind}" title="{c["label"]}: {c["tooltip"]}">'
+            f'{c["letter"]}</span>')
+
+
+_NAV = [("main.py", "Overview", "home"), ("pages/1_Map.py", "Map", "map"),
+        ("pages/2_Fuel.py", "Fuel", "water_drop"), ("pages/3_Driver.py", "Driver", "person"),
+        ("pages/4_Utilization.py", "Utilization", "monitoring"),
+        ("pages/5_Maintenance.py", "Maintenance", "build"),
+        ("pages/6_Anomalies.py", "Anomalies", "error"),
+        ("pages/7_Audit_Export.py", "Audit Export", "description")]
+
+
+def _sidebar_nav():
+    """Custom sidebar nav (replaces the default page list): icons + status badges."""
+    st.sidebar.markdown('<div class="tt-navtitle">Truck Tracker</div>', unsafe_allow_html=True)
+    try:
+        n_anom = int(db.scalar("SELECT COUNT(*) FROM anomalies", default=0) or 0)
+        hard = int(db.scalar("SELECT COUNT(*) FROM eco_flags WHERE hard_safety=1", default=0) or 0)
+        overdue = int(db.scalar("SELECT COUNT(*) FROM service_status WHERE due=1", default=0) or 0)
+    except Exception:
+        n_anom = hard = overdue = 0
+    for path, lbl, mic in _NAV:
+        badge = ""
+        if lbl == "Anomalies" and n_anom:
+            badge = f"  ({n_anom})"
+        elif lbl == "Driver" and hard:
+            badge = "  🔴"
+        elif lbl == "Maintenance" and overdue:
+            badge = "  🟠"
+        try:
+            st.sidebar.page_link(path, label=f"{lbl}{badge}", icon=f":material/{mic}:")
+        except Exception:
+            try:
+                st.sidebar.page_link(path, label=f"{lbl}{badge}")
+            except Exception:
+                st.sidebar.markdown(f'<div class="tt-small">{lbl}{badge}</div>',
+                                    unsafe_allow_html=True)
+    st.sidebar.markdown('<hr style="margin:.5rem 0"/>', unsafe_allow_html=True)
+
+
 def page_setup(title):
-    """First call on every page: configure, inject CSS. Returns nothing."""
+    """First call on every page: configure, inject CSS, render the sidebar nav."""
     st.set_page_config(page_title=f"{title} · Truck Tracker", layout="wide",
                        initial_sidebar_state="expanded")
     st.markdown(_CSS, unsafe_allow_html=True)
+    _sidebar_nav()
 
 
 def header(title, subtitle=None):
@@ -180,16 +308,11 @@ def fmt_dur(seconds):
     return f"{m}m"
 
 
-# Preset name -> length in seconds (None = all history).
-PERIODS = {
-    "Last 24 hours": 86400,
-    "Last 3 days": 3 * 86400,
-    "Last 7 days": 7 * 86400,
-    "Last 30 days": 30 * 86400,
-    "All data": None,
-    "Custom range…": "custom",
-}
-_DEFAULT = "Last 30 days"
+# Segmented presets -> (length-seconds | "month" | "custom"), friendly label.
+_PERIOD_OPTS = ["7d", "30d", "Month", "Custom"]
+_PERIOD_SPEC = {"7d": (7 * 86400, "Last 7 days"), "30d": (30 * 86400, "Last 30 days"),
+                "Month": ("month", "This month"), "Custom": ("custom", None)}
+_DEFAULT = "30d"
 
 
 def _day_start(d):
@@ -197,17 +320,16 @@ def _day_start(d):
 
 
 def period_selector():
-    """Sidebar period control, anchored to the latest data we hold.
+    """Sidebar period control (segmented), anchored to the latest data we hold.
 
-    Presets plus a custom from–to range (for matching a billing period).
-    Returns (from_ts, to_ts, label) and shows the resolved range in the sidebar.
+    [7d] [30d] [Month] [Custom]. Returns (from_ts, to_ts, label) and shows the
+    resolved range in the sidebar.
     """
     st.sidebar.markdown("**Period**")
-    choice = st.sidebar.selectbox("Period", list(PERIODS),
-                                  index=list(PERIODS).index(_DEFAULT),
-                                  label_visibility="collapsed", key="tt_period")
+    choice = st.sidebar.segmented_control("Period", _PERIOD_OPTS, default=_DEFAULT,
+                                          label_visibility="collapsed", key="tt_period") or _DEFAULT
     anchor = db.last_data_ts() or int(time.time())
-    span = PERIODS[choice]
+    span, label = _PERIOD_SPEC[choice]
 
     if span == "custom":
         d_to = datetime.fromtimestamp(anchor, timezone.utc).date()
@@ -219,10 +341,11 @@ def period_selector():
             d_from, d_to = d_to, d_from
         from_ts, to_ts = _day_start(d_from), _day_start(d_to) + 86399
         label = f"{d_from:%d %b} – {d_to:%d %b %Y}"
-    elif span is None:
-        from_ts, to_ts, label = 0, anchor, "All data"
+    elif span == "month":
+        d = datetime.fromtimestamp(anchor, timezone.utc).date().replace(day=1)
+        from_ts, to_ts = _day_start(d), anchor
     else:
-        from_ts, to_ts, label = anchor - span, anchor, choice
+        from_ts, to_ts = anchor - span, anchor
 
     st.sidebar.caption(f"Showing {fmt_dt(from_ts, with_time=False)} – "
                        f"{fmt_dt(to_ts, with_time=False)}")
@@ -232,10 +355,16 @@ def period_selector():
 def freshness_caption():
     last = db.last_data_ts()
     ingested = db.last_ingest_ts()
-    bits = []
     if last:
-        bits.append(f"Data as of {fmt_dt(last)} UTC")
+        age_h = (time.time() - last) / 3600
+        dot = STATUS_OK if age_h < 6 else (STATUS_WARN if age_h < 24 else STATUS_CRITICAL)
+        st.sidebar.markdown(
+            f'<div class="tt-small" style="margin-top:.3rem"><span style="display:inline-block;'
+            f'width:8px;height:8px;border-radius:999px;background:{dot};margin-right:.4rem">'
+            f'</span>Data as of {fmt_dt(last)} UTC</div>', unsafe_allow_html=True)
     if ingested:
-        bits.append(f"last ingestion {fmt_dt(ingested)} UTC")
-    if bits:
-        st.sidebar.caption(" · ".join(bits))
+        st.sidebar.caption(f"last ingestion {fmt_dt(ingested)} UTC")
+    st.sidebar.markdown(
+        '<a class="tt-small" href="https://github.com/bashir-netizen/truck-tracker/tree/main/docs" '
+        'target="_blank" style="color:var(--ink-muted)">About this dashboard ↗</a>',
+        unsafe_allow_html=True)

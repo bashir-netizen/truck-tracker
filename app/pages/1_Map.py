@@ -96,11 +96,11 @@ if "map_range" not in st.session_state:
     st.session_state.map_range = (month_start, today)
 st.sidebar.markdown("**Period**")
 b1, b2, b3 = st.sidebar.columns(3)
-if b1.button("Month", use_container_width=True):
+if b1.button("Month", width="stretch"):
     st.session_state.map_range = (month_start, today)
-if b2.button("30d", use_container_width=True):
+if b2.button("30d", width="stretch"):
     st.session_state.map_range = (today - timedelta(days=30), today)
-if b3.button("7d", use_container_width=True):
+if b3.button("7d", width="stretch"):
     st.session_state.map_range = (today - timedelta(days=7), today)
 picked = st.sidebar.date_input("Date range", value=st.session_state.map_range,
                                label_visibility="collapsed")
@@ -165,14 +165,14 @@ st.markdown('<div class="tt-eyebrow" style="margin:.3rem 0 .2rem">Trips by day �
             'filter</div>', unsafe_allow_html=True)
 legend_cols = st.columns(min(8, max(1, len(ordered_days) + 1)))
 with legend_cols[0]:
-    if st.button("All dates", use_container_width=True,
+    if st.button("All dates", width="stretch",
                  type="primary" if st.session_state.map_day is None else "secondary"):
         st.session_state.map_day = None
         st.rerun()
 for i, d in enumerate(ordered_days[:7], start=1):
     lbl = datetime.strptime(d, "%Y-%m-%d").strftime("%d %b")
     with legend_cols[i]:
-        if st.button(f"{lbl} · {day_counts[d]}", key=f"day_{d}", use_container_width=True,
+        if st.button(f"{lbl} · {day_counts[d]}", key=f"day_{d}", width="stretch",
                      type="primary" if st.session_state.map_day == d else "secondary"):
             st.session_state.map_day = None if st.session_state.map_day == d else d
             st.rerun()
@@ -322,7 +322,7 @@ event = st.pydeck_chart(
                       "style": {"backgroundColor": theme.INK, "color": "white",
                                 "fontSize": "12px", "borderRadius": "8px"}}),
     on_select="rerun", selection_mode="single-object", key="mapsel",
-    use_container_width=True)
+    width="stretch")
 
 # legend strip under the map
 leg = (f'<span style="color:{theme.MUTED}">tracks coloured by day · width by class</span>'
@@ -399,7 +399,7 @@ if sel_event:
             f'<div style="margin:.3rem 0 .1rem"><b>{where}</b></div>'
             f'<div class="tt-sub">{when} · {ctx}</div></div>', unsafe_allow_html=True)
     with b:
-        if st.button("Clear event", use_container_width=True):
+        if st.button("Clear event", width="stretch"):
             st.session_state.pop("sel_event", None)
             st.rerun()
     if ctrip:
@@ -434,14 +434,14 @@ else:
     show["Time there"] = show["dwell_s"].apply(theme.fmt_dur)
     show["Last visited"] = show["last_ts"].apply(relative_day)
     st.dataframe(show[["label", "Time there", "visits", "Last visited"]], hide_index=True,
-                 use_container_width=True,
+                 width="stretch",
                  column_config={"label": "Place", "visits": st.column_config.NumberColumn("Visits")})
 
 unlabeled = db.q("SELECT label, ROUND(lat,5) lat, ROUND(lon,5) lon FROM places WHERE needs_label=1")
 if not unlabeled.empty:
     with st.expander(f"{len(unlabeled)} place(s) need a better name — edit places.yaml"):
         st.dataframe(unlabeled.rename(columns={"label": "Current name", "lat": "Lat", "lon": "Lon"}),
-                     hide_index=True, use_container_width=True)
+                     hide_index=True, width="stretch")
         pyaml = ROOT / "places.yaml"
         st.code(pyaml.read_text() if pyaml.exists()
                 else "- label: Athi River yard\n  lat: -1.437\n  lon: 36.961\n", language="yaml")
@@ -459,14 +459,15 @@ with st.expander("Cost & what-if"):
     cc = st.columns(2)
     with cc[0]:
         metric_card("Fuel bought", format_kes(estimate.fuel_cost(filled, diesel)),
-                    hint=f"at KES {diesel}/L pump price")
+                    confidence="inferred", icon="fuel", hint=f"at KES {diesel}/L pump price")
     if any(v is not None for v in km_rates.values()):
         total, _, incl, excl = estimate.revenue_by_class(all_routes, km_rates)
         foot = "Includes: " + ", ".join(CLASS_LABELS[c] for c in incl)
         if excl:
             foot += " · Excludes: " + ", ".join(CLASS_LABELS[c] for c in excl) + " (no rate)"
         with cc[1]:
-            metric_card("Est. revenue", format_kes(total), hint=foot)
+            metric_card("Est. revenue", format_kes(total), confidence="inferred",
+                        icon="banknote", hint=foot)
     st.markdown("Enter hypothetical KES/km to value this period:")
     w = st.columns(3)
     inputs = {c: w[i].number_input(f"{CLASS_LABELS[c].title()} KES/km", value=km_rates[c],

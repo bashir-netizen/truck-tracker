@@ -57,7 +57,7 @@ c2.metric("Route distance", f"{routes['Distance (km)'].sum():,.0f} km")
 c3.metric("Total fuel", f"{ledger['Fuel (L)'].sum():,.0f} L")
 
 st.markdown('<hr/>', unsafe_allow_html=True)
-st.dataframe(ledger, hide_index=True, use_container_width=True, column_config={
+st.dataframe(ledger, hide_index=True, width="stretch", column_config={
     "Date": st.column_config.DatetimeColumn("Date", format="DD MMM YYYY, HH:mm")})
 st.download_button("Download journeys CSV", data=ledger.to_csv(index=False).encode("utf-8"),
                    file_name=fname("journeys"), mime="text/csv")
@@ -78,7 +78,7 @@ with st.expander("All trips in this period (raw legs)"):
             "Max (km/h)": trips["max_speed_kmh"],
             "Fuel (L)": trips["consumed_l"].round(2),
         })
-        st.dataframe(tl, hide_index=True, use_container_width=True, column_config={
+        st.dataframe(tl, hide_index=True, width="stretch", column_config={
             "Start": st.column_config.DatetimeColumn("Start", format="DD MMM, HH:mm"),
             "End": st.column_config.DatetimeColumn("End", format="DD MMM, HH:mm")})
         st.download_button("Download trips CSV", data=tl.to_csv(index=False).encode("utf-8"),

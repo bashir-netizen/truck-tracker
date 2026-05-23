@@ -32,15 +32,15 @@ if not agg["trips"]:
 drive_h = agg["dur"] / 3600.0
 avg_km = (agg["dist"] / 1000.0) / agg["trips"]
 cards_row([
-    dict(label="Active days", value=f"{int(agg['days'])}", unit=""),
-    dict(label="Driving time", value=f"{drive_h:,.0f}", unit="h"),
-    dict(label="Avg trip", value=f"{avg_km:,.0f}", unit="km"),
+    dict(label="Active days", value=f"{int(agg['days'])}", unit="", confidence="observed"),
+    dict(label="Driving time", value=f"{drive_h:,.0f}", unit="h", confidence="observed"),
+    dict(label="Avg trip", value=f"{avg_km:,.0f}", unit="km", confidence="observed"),
 ])
 st.markdown('<div style="height:.7rem"></div>', unsafe_allow_html=True)
 cards_row([
-    dict(label="Trips", value=f"{int(agg['trips'])}", unit=""),
-    dict(label="Longest trip", value=f"{agg['longest']/1000:,.0f}", unit="km"),
-    dict(label="Distance", value=f"{agg['dist']/1000:,.0f}", unit="km"),
+    dict(label="Trips", value=f"{int(agg['trips'])}", unit="", confidence="observed"),
+    dict(label="Longest trip", value=f"{agg['longest']/1000:,.0f}", unit="km", confidence="observed"),
+    dict(label="Distance", value=f"{agg['dist']/1000:,.0f}", unit="km", confidence="observed"),
 ])
 
 st.markdown('<hr/>', unsafe_allow_html=True)
@@ -55,4 +55,4 @@ fig.update_traces(marker_color=theme.ACCENT,
                   hovertemplate="%{x|%d %b}<br>%{y} trips<extra></extra>")
 fig.update_xaxes(title=None)
 fig.update_yaxes(title=None)
-st.plotly_chart(theme.style_fig(fig, height=260), use_container_width=True)
+st.plotly_chart(theme.style_fig(fig, height=260), width="stretch")

@@ -36,23 +36,23 @@ score = db.scalar("SELECT score FROM driver_score ORDER BY period_start DESC LIM
 # --- headline: four cards -------------------------------------------------
 c1, c2, c3, c4 = st.columns(4)
 with c1:
-    metric_card("Hard safety events", str(int(hard)),
+    metric_card("Hard safety events", str(int(hard)), confidence="observed",
                 tone="alert" if hard else None,
                 hint="extreme severity or severe speeding" if hard else "within normal range")
 with c2:
-    metric_card("Events per 100 km", f"{per100:.1f}",
+    metric_card("Events per 100 km", f"{per100:.1f}", confidence="observed",
                 hint="no baseline yet — building from this period")
 with c3:
     if total:
         vc = events["type"].value_counts()
         top_type, top_n = vc.index[0], int(vc.iloc[0])
-        metric_card("Most common", TYPE_LABELS.get(top_type, top_type),
+        metric_card("Most common", TYPE_LABELS.get(top_type, top_type), confidence="observed",
                     hint=f"{top_n} of {total} ({top_n * 100 // total}%)")
     else:
-        metric_card("Most common", "—")
+        metric_card("Most common", "—", confidence="observed")
 with c4:
     metric_card("Wialon score", f"{score:.1f}" if score is not None else "—", unit="/10",
-                subtle=True, hint="reference · European calibration")
+                subtle=True, confidence="inferred", hint="reference · European calibration")
 
 with st.expander("Why the Wialon score may not reflect local conditions"):
     st.markdown(
@@ -94,7 +94,7 @@ else:
         "Trip": hs["journey_character"],
         "Map": hs.apply(lambda r: f"https://maps.google.com/?q={r.lat},{r.lon}", axis=1),
     })
-    st.dataframe(tbl, hide_index=True, use_container_width=True, column_config={
+    st.dataframe(tbl, hide_index=True, width="stretch", column_config={
         "When": st.column_config.DatetimeColumn("When", format="DD MMM, HH:mm"),
         "Map": st.column_config.LinkColumn("Map", display_text="open")})
 
@@ -107,9 +107,10 @@ nj = db.q(
 night_h = (nj["night_seconds"].sum() / 3600) if not nj.empty else 0
 n1, n2 = st.columns(2)
 with n1:
-    metric_card("Night driving", f"{night_h:.1f}", "h", hint="19:00–05:00 local, on highways")
+    metric_card("Night driving", f"{night_h:.1f}", "h", confidence="inferred",
+                hint="19:00–05:00 local, on highways")
 with n2:
-    metric_card("Trips with night driving", str(len(nj)))
+    metric_card("Trips with night driving", str(len(nj)), confidence="inferred")
 st.caption("Night driving increases fatigue and accident risk. Confirm with the operator "
            "whether night portions are scheduled or unplanned. **Inferred** from timestamps — "
            "engine-on at a fuel stop can look like night activity.")
@@ -121,7 +122,7 @@ if not nj.empty:
         "Route": nj["origin_place_id"].map(lbl) + " → " + nj["dest_place_id"].map(lbl),
         "Night driving (h)": (nj["night_seconds"] / 3600).round(1),
     })
-    st.dataframe(nt, hide_index=True, use_container_width=True, column_config={
+    st.dataframe(nt, hide_index=True, width="stretch", column_config={
         "Date": st.column_config.DatetimeColumn("Date", format="DD MMM YYYY")})
 
 # --- patterns over time ---------------------------------------------------
@@ -141,14 +142,14 @@ else:
         st.caption("Events per 100 km, weekly")
         f = px.line(weeks, x="week", y="e100", markers=True)
         f.update_traces(line_color=theme.ACCENT)
-        st.plotly_chart(theme.style_fig(f, height=200), use_container_width=True)
+        st.plotly_chart(theme.style_fig(f, height=200), width="stretch")
     with b:
         st.caption("Event mix by type, weekly")
         mix = weeks.melt(id_vars="week",
                          value_vars=["accel_count", "brake_count", "corner_count", "speeding_count"],
                          var_name="type", value_name="n")
         f = px.bar(mix, x="week", y="n", color="type")
-        st.plotly_chart(theme.style_fig(f, height=200), use_container_width=True)
+        st.plotly_chart(theme.style_fig(f, height=200), width="stretch")
 
 # --- event breakdown (existing) -------------------------------------------
 st.markdown('<hr/>', unsafe_allow_html=True)
@@ -163,7 +164,7 @@ else:
     fig.update_traces(marker_color=theme.ACCENT, hovertemplate="%{y}<br>%{x} events<extra></extra>")
     fig.update_xaxes(title=None)
     fig.update_yaxes(title=None)
-    st.plotly_chart(theme.style_fig(fig, height=240), use_container_width=True)
+    st.plotly_chart(theme.style_fig(fig, height=240), width="stretch")
 
 # --- Wialon score over time (reference, bottom) ---------------------------
 st.markdown('<hr/>', unsafe_allow_html=True)
@@ -182,4 +183,4 @@ else:
     fig.update_traces(line_color=theme.MUTED, hovertemplate="week of %{x|%d %b}<br>%{y:.1f}/10<extra></extra>")
     fig.update_yaxes(range=[0, 10], dtick=2, title=None)
     fig.update_xaxes(title=None)
-    st.plotly_chart(theme.style_fig(fig, height=220), use_container_width=True)
+    st.plotly_chart(theme.style_fig(fig, height=220), width="stretch")
