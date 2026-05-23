@@ -18,7 +18,5 @@ def render(items):
         bg, text = "var(--ok)", "All clear"
     st.markdown(
         f'<div style="background:{bg};color:#fff;border-radius:8px;padding:.5rem .9rem;'
-        f'font-weight:600;font-size:var(--t-small);display:flex;justify-content:space-between;'
-        f'align-items:center;margin:.2rem 0 .4rem"><span>{text}</span>'
-        f'<span style="opacity:.85">&#8595; status below</span></div>',
+        f'font-weight:600;font-size:var(--t-small);margin:.2rem 0 .4rem">{text}</div>',
         unsafe_allow_html=True)

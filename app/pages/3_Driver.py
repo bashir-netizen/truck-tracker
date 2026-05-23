@@ -65,6 +65,40 @@ with st.expander("Why the Wialon score may not reflect local conditions"):
         "metrics above (hard-safety events, events per 100 km) are the actionable ones.\n\n"
         f"{theme.WIALON_SCORE_NOTE} See `docs/scoring.md`.")
 
+# --- most common violations this period -----------------------------------
+st.markdown('<hr/>', unsafe_allow_html=True)
+st.subheader("Most common violations this period")
+if total:
+    vc = events["type"].value_counts().to_dict()
+    ranked = theme.top_violations(vc)
+    top = ranked[0][1] if ranked else 1
+    rows_html = ""
+    for i, (vlabel, n, pct) in enumerate(ranked, 1):
+        barw = int(n / top * 100)
+        rows_html += (
+            '<div style="display:flex;align-items:center;gap:.6rem;padding:.28rem 0">'
+            f'<span style="width:1.1rem;color:var(--ink-faint)">{i}</span>'
+            f'<span style="width:9rem">{vlabel.title()}</span>'
+            '<span style="flex:1;background:var(--surface-alt);border-radius:4px">'
+            f'<span style="display:block;height:8px;width:{barw}%;background:var(--accent);'
+            'border-radius:4px"></span></span>'
+            '<span style="width:5.5rem;text-align:right;font-variant-numeric:tabular-nums">'
+            f'{n} ({pct}%)</span></div>')
+    st.markdown(rows_html, unsafe_allow_html=True)
+    prev = db.q("SELECT type FROM eco_events WHERE ts BETWEEN ? AND ?", (frm - (to - frm), frm))
+    if not prev.empty:
+        pv = prev["type"].value_counts().to_dict()
+        ptot = sum(pv.values()) or 1
+        for t, n in vc.items():
+            shift = n / total * 100 - pv.get(t, 0) / ptot * 100
+            if shift > 10:
+                st.caption(f"Note: {theme.VIOLATION_LABELS.get(t, t)} up "
+                           f"{shift:.0f} points vs last period.")
+                break
+    st.caption("Observed — raw event counts.")
+else:
+    empty_state("No violations in this period")
+
 # --- events worth attention (hard-safety only) ----------------------------
 st.markdown('<hr/>', unsafe_allow_html=True)
 st.subheader("Events worth attention")

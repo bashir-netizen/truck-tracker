@@ -14,8 +14,8 @@ import streamlit as st  # noqa: E402
 import streamlit.components.v1 as components  # noqa: E402
 
 import config  # noqa: E402
-from app.components import (db, destination_row, hero_summary, status_panel,  # noqa: E402
-                            status_strip, theme, thumbnail_map, trip_mix_line)
+from app.components import (db, destination_row, hero_summary, places_meta,  # noqa: E402
+                            status_panel, status_strip, theme, thumbnail_map, trip_mix_line)
 from app.components.empty_state import empty_state  # noqa: E402
 from app.components.format import format_kes, relative_day  # noqa: E402
 from app.components.metric_card import metric_card  # noqa: E402
@@ -118,22 +118,19 @@ st.caption(f"{label} · is everything okay with the truck?")
 st.markdown('<div style="height:1.2rem"></div>', unsafe_allow_html=True)
 status_panel.render(items)
 
-# === Section 2 — Hero summary ============================================
+# === Section 2 — Hero summary (one prose line) ==========================
 st.markdown('<div style="height:1.8rem"></div>', unsafe_allow_html=True)
 dist_dt, dist_dir = delta_pct(dist_km, prev_km)
 mix_str = " · ".join(f"{mix[c]} {CLASS_LABELS[c]}"
                      for c in ["long_haul", "regional", "local", "yard"] if mix.get(c)) or "—"
-hero_summary.render(f"{label} at a glance", [
-    {"icon": "route", "label": "Distance", "value": f"{dist_km:,.0f} km",
-     "confidence": "observed", "delta_text": dist_dt, "delta_direction": dist_dir},
-    {"icon": "droplet", "label": "Fuel burned", "value": f"{fuel_l:,.0f} L",
-     "confidence": "observed"},
-    {"icon": "calendar", "label": "Active days", "value": f"{active_days} of {period_days}",
-     "sub": f"({util:.0f}% utilization)", "confidence": "inferred"},
-    {"icon": "map", "label": "Trip mix", "value": mix_str, "confidence": "inferred"},
-    {"icon": "user", "label": "Driver", "value": f"{hard} hard safety events",
-     "confidence": "observed"},
-])
+_O, _I = theme.confidence_badge("observed"), theme.confidence_badge("inferred")
+hero_summary.render(
+    f'<b>{active_days} active day{"s" if active_days != 1 else ""}</b> '
+    f'{PERIOD_WORD.get(label, "this period")}: '
+    f'<b>{dist_km:,.0f} km</b> {_O}, <b>{fuel_l:,.0f} L</b> fuel '
+    f'(≈ {format_kes(estimate.fuel_cost(filled, diesel))}) {_I}, '
+    f'<b>{mix_str}</b> {_I}, '
+    f'<b>{hard} hard-safety event{"s" if hard != 1 else ""}</b> {_O}.')
 
 # === Section 3 — Three supporting cards ==================================
 st.markdown('<div style="height:1.2rem"></div>', unsafe_allow_html=True)
@@ -150,54 +147,68 @@ with c2:
                        f"ref · KES {diesel}/L")
 with c3:
     metric_card("Activity", f"{active_days} of {period_days}", unit="days", confidence="inferred",
-                icon="activity", delta_text=f"{util:.0f}% utilization", delta_direction="flat")
+                icon="activity", delta_text=f"{util:.0f}% utilization", delta_direction="flat",
+                source=f"{active_days} active · {period_days - active_days} idle days")
 
 # === Section 4 — Geography ===============================================
 st.markdown('<div style="height:1.8rem"></div>', unsafe_allow_html=True)
 st.markdown('<div class="tt-h2">Where it went</div>', unsafe_allow_html=True)
 trip_mix_line.render(mix)
 
-# class tag per place (strongest touching journey character; top-dwell = base)
-place_class = {}
+# Destinations = journey endpoints (origin/dest), named (needs_label=0). Mid-route
+# transit stops aren't endpoints, so they drop out naturally.
+endpoints, ep_class, origin_n = set(), {}, {}
 for r in db.q("SELECT origin_place_id o, dest_place_id d, journey_character c FROM journeys "
               "WHERE start_ts BETWEEN ? AND ?", (frm, to)).itertuples():
+    if r.o is not None and r.o == r.o:
+        origin_n[int(r.o)] = origin_n.get(int(r.o), 0) + 1
     for pid in (r.o, r.d):
-        if pid is not None and not (isinstance(pid, float) and pid != pid):
+        if pid is not None and pid == pid:
             pid = int(pid)
-            if RANK.get(r.c, 0) >= RANK.get(place_class.get(pid), -1):
-                place_class[pid] = r.c
+            endpoints.add(pid)
+            if RANK.get(r.c, 0) >= RANK.get(ep_class.get(pid), -1):
+                ep_class[pid] = r.c
+NAMED = {int(x.place_id) for x in db.q("SELECT place_id FROM places WHERE needs_label=0").itertuples()}
+named_eps = endpoints & NAMED
+depot_lbls = places_meta.depot_labels()
+fallback_depot = max(origin_n, key=origin_n.get) if origin_n and not depot_lbls else None
 
-dwell = db.q("SELECT place_id, SUM(duration_s) dwell, COUNT(*) visits, MAX(ts) last_ts "
-             "FROM place_visits WHERE ts BETWEEN ? AND ? GROUP BY place_id ORDER BY dwell DESC",
-             (frm, to))
+
+def _tag(pid):
+    if P.get(pid) in depot_lbls or pid == fallback_depot:
+        return "depot"
+    c = ep_class.get(pid)
+    return f"{CLASS_LABELS.get(c, 'transit')} destination" if c else "transit"
+
+
+vis = db.q("SELECT place_id, COUNT(*) visits, MAX(ts) last_ts FROM place_visits "
+           "WHERE ts BETWEEN ? AND ? GROUP BY place_id", (frm, to))
+dest_rows = sorted((r for r in vis.itertuples() if int(r.place_id) in named_eps),
+                   key=lambda r: (int(r.visits or 0), int(r.last_ts or 0)), reverse=True)
+first_ever = {int(x.place_id): int(x.first) for x in db.q(
+    "SELECT place_id, MIN(ts) first FROM place_visits GROUP BY place_id").itertuples()}
+n_transit = sum(1 for r in vis.itertuples() if int(r.place_id) not in named_eps)
 gcol, mcol = st.columns([3, 2])
 with gcol:
-    if dwell.empty:
-        empty_state("No place visits in this period")
-    else:
-        base_pid = int(dwell.iloc[0]["place_id"])
-        for r in dwell.head(5).itertuples():
-            pid = int(r.place_id)
-            if pid == base_pid:
-                tag = "base"
-            elif pid in place_class:
-                tag = f"{CLASS_LABELS[place_class[pid]]} destination"
-            else:
-                tag = "stop"
-            destination_row.render(P.get(pid, "—"), tag, int(r.visits or 0), int(r.last_ts or 0))
-    # new or rare this period
-    rare = db.q("SELECT place_id, COUNT(*) n, MIN(ts) first FROM place_visits "
-                "WHERE ts BETWEEN ? AND ? GROUP BY place_id", (frm, to))
-    first_ever = {int(r.place_id): int(r.first) for r in db.q(
-        "SELECT place_id, MIN(ts) first FROM place_visits GROUP BY place_id").itertuples()}
-    flags = []
-    for r in rare.itertuples():
+    if not dest_rows:
+        empty_state("No named destinations this period")
+    for r in dest_rows[:5]:
         pid = int(r.place_id)
-        if int(r.n) == 1 or first_ever.get(pid, 0) >= frm:
-            flags.append(P.get(pid, "—"))
-    if flags:
-        st.markdown('<div class="tt-small" style="margin-top:.6rem"><b>New or rare this '
-                    f'period:</b> {", ".join(sorted(set(flags))[:6])}</div>', unsafe_allow_html=True)
+        destination_row.render(P.get(pid, "—"), _tag(pid), int(r.visits or 0), int(r.last_ts or 0))
+    if n_transit:
+        st.markdown(f'<div class="tt-small" style="margin-top:.5rem">{n_transit} transit '
+                    f'stop{"s" if n_transit != 1 else ""} not shown</div>', unsafe_allow_html=True)
+        st.page_link("pages/1_Map.py", label="Open full map →")
+    # "New" is only meaningful with history before the period; otherwise every place
+    # looks new (the data is younger than the window) — so we stay quiet, like deltas.
+    has_prior = (db.scalar("SELECT COUNT(*) FROM place_visits WHERE ts < ?", (frm,), 0) or 0) > 0
+    if has_prior:
+        new_named = sorted({P.get(int(r.place_id), "—") for r in dest_rows
+                            if first_ever.get(int(r.place_id), 0) >= frm})
+        msg = (f'<b>New this period:</b> {", ".join(new_named)}' if new_named
+               else "All named places this period were familiar.")
+        st.markdown(f'<div class="tt-small" style="margin-top:.4rem">{msg}</div>',
+                    unsafe_allow_html=True)
 with mcol:
     corr = [json.loads(r.path_geojson) for r in db.q(
         "SELECT path_geojson FROM corridors").itertuples() if r.path_geojson]
@@ -229,12 +240,34 @@ st.markdown('<div style="height:1.8rem"></div>', unsafe_allow_html=True)
 st.markdown('<div class="tt-h2">Truck care</div>'
             '<div class="tt-small" style="margin:-.1rem 0 .6rem">Driver behaviour and '
             'maintenance status.</div>', unsafe_allow_html=True)
+vcounts = {r.type: int(r.n) for r in db.q(
+    "SELECT type, COUNT(*) n FROM eco_events WHERE ts BETWEEN ? AND ? GROUP BY type",
+    (frm, to)).itertuples()}
+ranked = theme.top_violations(vcounts)
+if not ranked:
+    vsub = f"{eco_total} events · {per100:.1f} per 100 km"
+elif len(ranked) > 1 and ranked[1][1] >= ranked[0][1] * 0.8:
+    vsub = (f"{eco_total} events total · {ranked[0][0]} ({ranked[0][1]}), "
+            f"{ranked[1][0]} ({ranked[1][1]}) · {per100:.1f} per 100 km")
+else:
+    vsub = (f"{eco_total} events total · mostly {ranked[0][0]} ({ranked[0][1]}) · "
+            f"{per100:.1f} per 100 km")
 care1, care2 = st.columns(2)
 with care1:
-    metric_card("Driver behaviour", str(hard), unit="hard-safety",
-                tone="alert" if hard else None, confidence="observed", icon="user",
-                hint=f"{eco_total} events, mostly mild/medium · {per100:.1f}/100 km",
-                source=f"Wialon score {score_s}/10 — reference (calibrated for Europe; see Driver)")
+    if hard:
+        head, hcolor, border = (f"{hard} hard-safety event{'s' if hard != 1 else ''}",
+                                "var(--critical)", "")
+    else:
+        head, hcolor, border = ("✓ No hard-safety events", "var(--ok)",
+                                "border-left:3px solid var(--ok)")
+    st.markdown(
+        f'<div class="tt-card" style="{border}">'
+        f'<div style="display:flex;justify-content:space-between;align-items:center">'
+        f'<div class="lbl">Driver behaviour</div>{theme.confidence_badge("observed")}</div>'
+        f'<div class="val" style="font-size:20px;color:{hcolor}">{head}</div>'
+        f'<div class="tt-small" style="margin-top:.3rem">{vsub}</div>'
+        f'<div class="src">Wialon score {score_s}/10 — reference (calibrated for Europe; '
+        f'see Driver)</div></div>', unsafe_allow_html=True)
     st.page_link("pages/3_Driver.py", label="View Driver →")
 with care2:
     svc = db.q("SELECT service_type, km_remaining, due FROM service_status ORDER BY km_remaining")

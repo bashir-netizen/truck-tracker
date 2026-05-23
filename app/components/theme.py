@@ -28,6 +28,11 @@ CLASS_COLORS = {**TRIP_CLASS_COLORS, "yard": "#94A3B8"}
 # Per-trip track width by class (long-haul dominant). Used by the Map PathLayer.
 CLASS_WIDTH = {"long_haul": 8, "regional": 5, "local": 3, "yard": 2}
 
+# Raw eco-event type -> human label (shared by the Overview Care card + Driver page).
+VIOLATION_LABELS = {"harsh_brake": "harsh braking", "harsh_accel": "harsh acceleration",
+                    "harsh_corner": "sharp cornering", "speeding": "speeding",
+                    "idling": "idling", "other": "other"}
+
 # 8-colour accessible categorical palette for per-trip tracks, assigned by date.
 TRIP_DATE_PALETTE = ["#c43d2f", "#1d6fb8", "#1d8a4a", "#c47d1d",
                      "#7b4fb0", "#0f8e8e", "#b03f7a", "#5b6770"]
@@ -50,6 +55,13 @@ def date_colors(ordered_days):
 def hex_to_rgb(h):
     h = h.lstrip("#")
     return [int(h[i:i + 2], 16) for i in (0, 2, 4)]
+
+
+def top_violations(counts):
+    """counts: {raw_type: n}. Returns ranked [(human_label, n, pct), …], highest first."""
+    total = sum(counts.values()) or 1
+    return [(VIOLATION_LABELS.get(t, t), n, round(n / total * 100))
+            for t, n in sorted(counts.items(), key=lambda kv: kv[1], reverse=True) if n]
 
 
 # Design-system tokens — warm paper, one red accent; hierarchy by size/weight.
@@ -364,6 +376,8 @@ def freshness_caption():
             f'</span>Data as of {fmt_dt(last)} UTC</div>', unsafe_allow_html=True)
     if ingested:
         st.sidebar.caption(f"last ingestion {fmt_dt(ingested)} UTC")
+    from app.components import refresh  # lazy: avoids import cost when unused
+    refresh.update_button()
     st.sidebar.markdown(
         '<a class="tt-small" href="https://github.com/bashir-netizen/truck-tracker/tree/main/docs" '
         'target="_blank" style="color:var(--ink-muted)">About this dashboard ↗</a>',

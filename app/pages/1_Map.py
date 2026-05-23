@@ -40,7 +40,8 @@ CLASS_WIDTH = getattr(theme, "CLASS_WIDTH", {
 MAX_TRIPS = 50
 LONG_STOP_S = 7200          # 2 h
 EVENT_RGB = {"fill": [29, 111, 184], "harsh": [196, 61, 47], "stop": [91, 103, 112]}
-EVENT_NAME = {"fill": "Fuel fill", "harsh": "Harsh event", "stop": "Long stop (unknown place)"}
+EVENT_NAME = {"fill": "⛽ fuel", "harsh": "⚠️ violation", "stop": "🅿️ parking"}
+ARROW_KM = {"long_haul": 5.0, "regional": 3.0, "local": 1.0, "yard": 1.0}
 # A small right-pointing arrow; tinted dark, drawn along each track to show heading.
 _ARROW_SVG = ("<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' "
               "viewBox='0 0 24 24'><path d='M3 12 H17 M12 6 L19 12 L12 18' "
@@ -73,7 +74,13 @@ def haversine_km(la0, lo0, la1, lo1):
     return 2 * r * math.asin(min(1.0, math.sqrt(a)))
 
 
-def sample_arrows(path, every_km=5.0):
+def _bearing(lo0, la0, lo1, la1):
+    dy = la1 - la0
+    dx = (lo1 - lo0) * math.cos(math.radians((la0 + la1) / 2))
+    return math.degrees(math.atan2(dy, dx))  # CCW from east; arrow SVG points east
+
+
+def sample_arrows(path, every_km=5.0, min_arrows=0):
     """Arrow markers (position + heading) every ~every_km along a [[lon,lat],…] path."""
     out, acc = [], 0.0
     for i in range(1, len(path)):
@@ -82,11 +89,26 @@ def sample_arrows(path, every_km=5.0):
         acc += haversine_km(la0, lo0, la1, lo1)
         if acc >= every_km:
             acc = 0.0
-            dy = la1 - la0
-            dx = (lo1 - lo0) * math.cos(math.radians((la0 + la1) / 2))
-            ang = math.degrees(math.atan2(dy, dx))  # CCW from east; arrow SVG points east
-            out.append({"position": [lo1, la1], "angle": ang, "icon": ARROW_ICON})
+            out.append({"position": [lo1, la1], "angle": _bearing(lo0, la0, lo1, la1),
+                        "icon": ARROW_ICON})
+    if len(out) < min_arrows and len(path) >= 2:   # tiny trips (yard): force a couple
+        out, n = [], len(path)
+        for k in range(1, min_arrows + 1):
+            idx = max(1, min(n - 1, round(k * (n - 1) / (min_arrows + 1))))
+            (lo0, la0), (lo1, la1) = path[idx - 1], path[idx]
+            out.append({"position": [lo1, la1], "angle": _bearing(lo0, la0, lo1, la1),
+                        "icon": ARROW_ICON})
     return out
+
+
+def nearest_place(lat, lon, max_km=3.0):
+    """Label of the nearest known place within max_km, else None."""
+    best, bestd = None, max_km
+    for p in P.values():
+        d = haversine_km(lat, lon, p.lat, p.lon)
+        if d < bestd:
+            best, bestd = p.label, d
+    return best
 
 
 # --- date range control (sidebar) -----------------------------------------
@@ -193,6 +215,12 @@ capped = (to_ts - from_ts) / 86400 > 30 and len(tdf) > MAX_TRIPS
 if capped:
     tdf = tdf.head(MAX_TRIPS)
 
+# per-date chronological index for "Trip N of M"
+n_in_day = {}
+for day, grp in tdf.groupby("day"):
+    for i, ts in enumerate(sorted(grp["start_ts"]), 1):
+        n_in_day[int(ts)] = (i, len(grp))
+
 # build per-trip records
 records = []
 for r in tdf.itertuples():
@@ -203,14 +231,18 @@ for r in tdf.itertuples():
             continue
         path = [[r.start_lon, r.start_lat], [r.end_lon, r.end_lat]]
     cls = r.journey_class or "local"
-    pretty = datetime.fromtimestamp(int(r.start_ts), timezone.utc).strftime("%d %b %H:%M")
     km = round((r.distance_m or 0) / 1000)
+    n_of, m_of = n_in_day.get(int(r.start_ts), (1, 1))
+    a = nearest_place(path[0][1], path[0][0]) or "start"
+    b = nearest_place(path[-1][1], path[-1][0]) or "end"
+    t0 = datetime.fromtimestamp(int(r.start_ts), timezone.utc).strftime("%d %b %H:%M")
+    t1 = datetime.fromtimestamp(int(r.end_ts), timezone.utc).strftime("%H:%M")
     records.append({
         "start_ts": int(r.start_ts), "end_ts": int(r.end_ts),
         "journey_class": cls, "day": r.day, "distance_km": km,
         "path": path, "fallback": fallback,
-        "name": f"{pretty} · {CLASS_LABELS.get(cls, cls)} · {km} km"
-                + (" · GPS path missing (straight line)" if fallback else ""),
+        "name": f"Trip {n_of} of {m_of} · {t0}→{t1} · {a}→{b} · {km} km"
+                + (" · GPS path missing" if fallback else ""),
         "color": theme.hex_to_rgb(DAY_COLOR[r.day]),
         "width": CLASS_WIDTH.get(cls, 4)})
 
@@ -291,7 +323,8 @@ if show_trips and records:
         arrows = []
         for r in records:
             if not r["fallback"]:
-                arrows += sample_arrows(r["path"])
+                arrows += sample_arrows(r["path"], ARROW_KM.get(r["journey_class"], 3.0),
+                                        min_arrows=2 if r["journey_class"] == "yard" else 0)
         if arrows:
             layers.append(pdk.Layer(
                 "IconLayer", id="arrows", data=arrows, get_icon="icon", get_position="position",
@@ -301,6 +334,21 @@ if show_trips and records:
             "PathLayer", id="trips_missing", data=dashed, get_path="path",
             get_color=[138, 146, 163, 150], get_width=2, width_units="pixels",
             width_min_pixels=1, pickable=True))
+    # start (filled dot) + end (hollow ring) markers, above paths & places
+    starts = [{"p": r["path"][0], "color": r["color"]} for r in records if not r["fallback"]]
+    ends = [{"p": r["path"][-1], "color": r["color"]} for r in records if not r["fallback"]]
+    if starts:
+        layers.append(pdk.Layer(
+            "ScatterplotLayer", id="trip_start", data=starts, get_position="p",
+            get_fill_color="color", get_radius=9, radius_units="pixels", radius_min_pixels=5,
+            stroked=True, get_line_color=[255, 255, 255], line_width_units="pixels",
+            get_line_width=2, pickable=False))
+    if ends:
+        layers.append(pdk.Layer(
+            "ScatterplotLayer", id="trip_end", data=ends, get_position="p",
+            get_fill_color=[255, 255, 255], get_radius=8, radius_units="pixels",
+            radius_min_pixels=4, stroked=True, get_line_color="color",
+            line_width_units="pixels", get_line_width=2.5, pickable=False))
 
 if show_events and events:
     for kind in ("fill", "harsh", "stop"):
@@ -325,11 +373,11 @@ event = st.pydeck_chart(
     width="stretch")
 
 # legend strip under the map
-leg = (f'<span style="color:{theme.MUTED}">tracks coloured by day · width by class</span>'
-       ' &nbsp; '
-       f'<span class="dot" style="background:rgb{tuple(EVENT_RGB["fill"])}"></span>fill'
-       f' &nbsp;<span class="dot" style="background:rgb{tuple(EVENT_RGB["harsh"])}"></span>harsh'
-       f' &nbsp;<span class="dot" style="background:rgb{tuple(EVENT_RGB["stop"])}"></span>long stop')
+leg = (f'<span style="color:{theme.MUTED}">tracks by day · width by class · ● start ○ end'
+       '</span> &nbsp; '
+       f'<span class="dot" style="background:rgb{tuple(EVENT_RGB["fill"])}"></span>⛽ fuel'
+       f' &nbsp;<span class="dot" style="background:rgb{tuple(EVENT_RGB["harsh"])}"></span>⚠️ violation'
+       f' &nbsp;<span class="dot" style="background:rgb{tuple(EVENT_RGB["stop"])}"></span>🅿️ parking')
 st.markdown(f'<div class="tt-legend" style="font-weight:500">{leg}</div>', unsafe_allow_html=True)
 if capped:
     st.caption(f"Showing the {MAX_TRIPS} most recent trips. Narrow the date range to see all.")

@@ -87,3 +87,29 @@ retransmission, iButton hardware, multi-user role management, fleet-wide scoring
 | Driver score recompute | Native eco score | **Switch:** ingest native score; keep hard-safety |
 | (planned) custom playback | Track Player (in-app modal — no deep-link) | **Build in-dashboard** playback (Task 3.4) |
 | (planned) ReportLab audit-PDF | Scheduled PDF reports | **Reconsider:** lean on Wialon scheduling |
+
+## Known scaling limits
+The Map date-filter pill strip is designed for ranges up to **~60 days**: 60–120 days the
+pills get hard to scan; 120+ days the pattern fails. When typical use exceeds 60 days,
+replace the pills with one of — a calendar heatmap (7-col, density-coloured cells); week/
+month auto-aggregation with drill-down; or de-emphasise date filtering in favour of
+class/destination/anomaly filters. Not blocking today — revisit at the first quarterly audit.
+
+## Map polish — deferred
+Brightness-within-date (earlier trips darker, later lighter); numbered start markers
+("1/2/3" per day); trip selection by clicking the start marker; hover-to-highlight (hovered
+path solid, others dim to 30%); perceptual palette (HCL/Oklab); date filter "context mode"
+(other dates dimmed but visible).
+
+## Refresh button — deferred
+Auto-refresh every ~30 min while the page is open; webhook callback so the page auto-reloads
+when the workflow completes; per-user audit log of manual refreshes.
+
+## Overview content — deferred
+Place-name hover with a visit-history mini-chart; editorial annotations on cards ("biggest
+fill: 363 L on 21 May"); time-of-day (day vs night) activity split; per-day drill-down in
+Geography (monthly → daily).
+
+## Driver page — deferred
+Per-trip violation breakdown (which trips had which types); driver-behaviour trend over time
+(events/100 km by week); geographic heat-map of where violations cluster.
