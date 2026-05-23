@@ -158,28 +158,35 @@ tdf = tdf.assign(
 
 # --- date legend / filter -------------------------------------------------
 day_counts = tdf.groupby("day").size().to_dict()
+ordered_days = sorted(day_counts, reverse=True)            # newest first (legend order)
+DAY_COLOR = theme.date_colors(ordered_days)                # sequential; no adjacent clashes
 st.session_state.setdefault("map_day", None)
 st.markdown('<div class="tt-eyebrow" style="margin:.3rem 0 .2rem">Trips by day — click to '
             'filter</div>', unsafe_allow_html=True)
-legend_cols = st.columns(min(8, max(1, len(day_counts) + 1)))
+legend_cols = st.columns(min(8, max(1, len(ordered_days) + 1)))
 with legend_cols[0]:
     if st.button("All dates", use_container_width=True,
                  type="primary" if st.session_state.map_day is None else "secondary"):
         st.session_state.map_day = None
         st.rerun()
-for i, d in enumerate(sorted(day_counts, reverse=True)[:7], start=1):
-    swatch = theme.date_color(d)
+for i, d in enumerate(ordered_days[:7], start=1):
     lbl = datetime.strptime(d, "%Y-%m-%d").strftime("%d %b")
     with legend_cols[i]:
         if st.button(f"{lbl} · {day_counts[d]}", key=f"day_{d}", use_container_width=True,
                      type="primary" if st.session_state.map_day == d else "secondary"):
             st.session_state.map_day = None if st.session_state.map_day == d else d
             st.rerun()
-        st.markdown(f'<div style="height:3px;border-radius:2px;background:{swatch};'
+        st.markdown(f'<div style="height:3px;border-radius:2px;background:{DAY_COLOR[d]};'
                     f'margin:-.4rem .2rem .4rem"></div>', unsafe_allow_html=True)
 
+# A selected day filters ALL layers (trips, places, events) via this window.
 if st.session_state.map_day:
-    tdf = tdf[tdf["day"] == st.session_state.map_day]
+    sel_day = st.session_state.map_day
+    eff_from = day_start(datetime.strptime(sel_day, "%Y-%m-%d").date())
+    eff_to = eff_from + 86399
+    tdf = tdf[tdf["day"] == sel_day]
+else:
+    eff_from, eff_to = from_ts, to_ts
 
 # performance cap: only for large ranges (a normal month renders fine)
 capped = (to_ts - from_ts) / 86400 > 30 and len(tdf) > MAX_TRIPS
@@ -204,12 +211,12 @@ for r in tdf.itertuples():
         "path": path, "fallback": fallback,
         "name": f"{pretty} · {CLASS_LABELS.get(cls, cls)} · {km} km"
                 + (" · GPS path missing (straight line)" if fallback else ""),
-        "color": theme.hex_to_rgb(theme.date_color(r.day)),
+        "color": theme.hex_to_rgb(DAY_COLOR[r.day]),
         "width": CLASS_WIDTH.get(cls, 4)})
 
 # --- places (period dwell) ------------------------------------------------
 dwell = db.q("SELECT place_id, SUM(duration_s) dwell, COUNT(*) visits, MAX(ts) last_ts "
-             "FROM place_visits WHERE ts BETWEEN ? AND ? GROUP BY place_id", (from_ts, to_ts))
+             "FROM place_visits WHERE ts BETWEEN ? AND ? GROUP BY place_id", (eff_from, eff_to))
 places_df = pd.DataFrame([
     {"place_id": int(r.place_id), "label": P[int(r.place_id)].label, "lat": P[int(r.place_id)].lat,
      "lon": P[int(r.place_id)].lon, "dwell_s": int(r.dwell or 0), "visits": int(r.visits or 0),
@@ -221,7 +228,7 @@ if not places_df.empty:
 # --- events (only loaded when the Events layer is on) ---------------------
 events = []
 if show_events:
-    lo, hi = from_ts, to_ts
+    lo, hi = eff_from, eff_to
     for r in db.q("SELECT ts, lat, lon, volume_l FROM fillings WHERE ts BETWEEN ? AND ?",
                   (lo, hi)).itertuples():
         if r.lat is not None:
@@ -280,7 +287,7 @@ if show_trips and records:
         layers.append(pdk.Layer(
             "PathLayer", id="trips", data=solid, get_path="path", get_color="color",
             get_width="width", width_units="pixels", width_min_pixels=2, width_max_pixels=10,
-            opacity=0.75, pickable=True, cap_rounded=True, joint_rounded=True))
+            pickable=True, cap_rounded=True, joint_rounded=True))
         arrows = []
         for r in records:
             if not r["fallback"]:

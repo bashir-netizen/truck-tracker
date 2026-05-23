@@ -25,20 +25,26 @@ CLASS_LABELS = {"long_haul": "long haul", "regional": "regional",
 TRIP_CLASS_COLORS = {"long_haul": "#1F6FEB", "regional": "#D97706", "local": "#16A34A"}
 CLASS_COLORS = {**TRIP_CLASS_COLORS, "yard": "#94A3B8"}
 
-# Per-trip track width by class (thicker on long-haul). Used by the Map PathLayer.
-CLASS_WIDTH = {"long_haul": 6, "regional": 5, "local": 4, "yard": 3}
+# Per-trip track width by class (long-haul dominant). Used by the Map PathLayer.
+CLASS_WIDTH = {"long_haul": 8, "regional": 5, "local": 3, "yard": 2}
 
-# 8-colour accessible categorical palette for per-trip tracks, keyed by local date.
-# Trips on the same date share a colour; the date->index is a stable CRC (not
-# Python's salted hash), so colours don't shuffle between reruns.
+# 8-colour accessible categorical palette for per-trip tracks, assigned by date.
 TRIP_DATE_PALETTE = ["#c43d2f", "#1d6fb8", "#1d8a4a", "#c47d1d",
                      "#7b4fb0", "#0f8e8e", "#b03f7a", "#5b6770"]
 
 
-def date_color(date_str):
-    """Deterministic palette colour (hex) for a 'YYYY-MM-DD' string."""
-    import zlib
-    return TRIP_DATE_PALETTE[zlib.crc32(date_str.encode()) % len(TRIP_DATE_PALETTE)]
+def date_colors(ordered_days):
+    """Map dates -> palette colours by sequential position (not a hash).
+
+    `ordered_days` = the dates currently shown, newest-first. Position i gets
+    TRIP_DATE_PALETTE[i % 8], so adjacent dates never share a colour (collisions
+    only at distance >= 8). TRADEOFF: colours are NOT stable across date-range
+    changes — switching 7d<->30d can recolour a given date. That's intentional:
+    it buys readable, collision-free adjacent colours within any one view, which a
+    hash can't guarantee (the old hash put adjacent May 17/18 on the same green).
+    """
+    return {d: TRIP_DATE_PALETTE[i % len(TRIP_DATE_PALETTE)]
+            for i, d in enumerate(ordered_days)}
 
 
 def hex_to_rgb(h):
