@@ -9,11 +9,14 @@ import streamlit as st
 from app.components import theme
 
 
-def metric_card(label, value, unit=None, delta=None, delta_good_up=True, hint=None):
+def metric_card(label, value, unit=None, delta=None, delta_good_up=True, hint=None,
+                tone=None, subtle=False):
     """Render a single metric card.
 
     delta: a signed number (already computed vs a baseline) or None.
     delta_good_up: whether an increase is good (drives the colour).
+    tone: "alert" renders the value in the alert colour (e.g. hard-safety > 0).
+    subtle: a lighter, supplementary card (e.g. a reference figure).
     """
     unit_html = f'<span class="unit">{unit}</span>' if unit else ""
     delta_html = ""
@@ -26,9 +29,11 @@ def metric_card(label, value, unit=None, delta=None, delta_good_up=True, hint=No
     elif hint:
         delta_html = f'<div class="delta flat">{hint}</div>'
 
+    card_cls = "tt-card subtle" if subtle else "tt-card"
+    val_cls = "val alert" if tone == "alert" else "val"
     st.markdown(
-        f'<div class="tt-card"><div class="lbl">{label}</div>'
-        f'<div class="val">{value}{unit_html}</div>{delta_html}</div>',
+        f'<div class="{card_cls}"><div class="lbl">{label}</div>'
+        f'<div class="{val_cls}">{value}{unit_html}</div>{delta_html}</div>',
         unsafe_allow_html=True,
     )
 

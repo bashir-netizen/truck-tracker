@@ -166,20 +166,23 @@ def test_driver_score_bounds_and_counts(con):
     assert row[1] == 1
 
 
-def test_eco_hard_safety_rules():
+def test_eco_hard_safety_is_extreme_only():
+    assert eco.hard_safety("extreme") == 1
+    assert eco.hard_safety("medium") == 0      # medium = road conditions, not hard-safety
+    assert eco.hard_safety("mild") == 0
+    assert eco.hard_safety(None) == 0
+
+
+def test_night_overlap():
     from datetime import datetime, timezone
 
-    def at_utc(h):  # UTC hour h -> Kenya local h+3
+    def utc(h):  # local Kenya time = UTC + 3
         return int(datetime(2026, 5, 20, h, 0, tzinfo=timezone.utc).timestamp())
 
-    night, day = at_utc(19), at_utc(9)            # local 22:00 (night) vs 12:00 (day)
-    assert eco.is_night(night) and not eco.is_night(day)
-    assert eco.hard_safety("harsh_brake", "extreme", None, day) == 1       # extreme
-    assert eco.hard_safety("speeding", "mild", "long_haul", day) == 0      # mild speeding
-    assert eco.hard_safety("speeding", "medium", "local", day) == 1        # medium speeding
-    assert eco.hard_safety("harsh_brake", "medium", "long_haul", night) == 1  # night highway
-    assert eco.hard_safety("harsh_brake", "medium", "local", night) == 0   # not highway
-    assert eco.hard_safety("harsh_brake", "medium", "long_haul", day) == 0  # daytime
+    # local 20:00-22:00 (= UTC 17:00-19:00) is fully inside the night window
+    assert journeys.night_overlap(utc(17), utc(19)) == 2 * 3600
+    # local 12:00-13:00 (= UTC 09:00-10:00) is fully daytime
+    assert journeys.night_overlap(utc(9), utc(10)) == 0
 
 
 def test_penalties_to_rank_matches_wialon_bands():

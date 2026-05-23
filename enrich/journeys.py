@@ -23,6 +23,19 @@ def character(distance_m, duration_s):
     return "yard"
 
 
+def night_overlap(start_ts, end_ts):
+    """Seconds of [start,end] (UTC) inside the local 19:00-05:00 night window."""
+    off = config.KENYA_UTC_OFFSET_H * 3600
+    s, e = start_ts + off, end_ts + off
+    total, day = 0, (s // 86400) * 86400
+    while day <= e:
+        ns = day + config.NIGHT_START_HOUR * 3600
+        ne = day + (24 + config.NIGHT_END_HOUR) * 3600
+        total += max(0, min(e, ne) - max(s, ns))
+        day += 86400
+    return total
+
+
 def _split(legs, gap_s):
     run = []
     for leg in legs:
@@ -58,13 +71,14 @@ def rebuild(con, unit_id):
         if not is_local and None not in (olat, olon, dlat, dlon):
             if places_mod.haversine_m(olat, olon, dlat, dlon) < config.PLACE_EPS_M:
                 is_local = 1  # returned to its own origin area
+        night = sum(night_overlap(x["start_ts"], x["end_ts"]) for x in j)
         out.append((unit_id, j[0]["start_ts"], j[-1]["end_ts"], olat, olon, dlat, dlon,
-                    len(j), dist, dur, fuel, l100, is_local, character(dist, dur)))
+                    len(j), dist, dur, fuel, l100, is_local, character(dist, dur), night))
 
     con.executemany(
         "INSERT INTO journeys (unit_id, start_ts, end_ts, origin_lat, origin_lon, "
         "dest_lat, dest_lon, leg_count, distance_m, duration_s, fuel_l, l_per_100km, "
-        "is_local, journey_character) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", out)
+        "is_local, journey_character, night_seconds) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", out)
     return len(out)
 
 

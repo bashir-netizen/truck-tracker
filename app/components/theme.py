@@ -74,6 +74,11 @@ _CSS = f"""
     margin-top: .35rem; }}
   .tt-card .val .unit {{ font-size: .9rem; font-weight: 600; color: {MUTED};
     margin-left: .25rem; }}
+  .tt-card .val.alert {{ color: {BAD}; }}
+  .tt-card.subtle {{ background: transparent; border-style: dashed;
+    box-shadow: none; }}
+  .tt-card.subtle .lbl {{ color: {MUTED}; }}
+  .tt-card.subtle .val {{ font-size: 1.3rem; color: {MUTED}; font-weight: 650; }}
   .tt-card .delta {{ font-size: .8rem; font-weight: 600; margin-top: .4rem; }}
   .tt-card .delta.up {{ color: {GOOD}; }} .tt-card .delta.down {{ color: {BAD}; }}
   .tt-card .delta.flat {{ color: {MUTED}; }}

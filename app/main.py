@@ -56,6 +56,11 @@ fuel_l = period_sum("consumed_l")
 econ = economy(frm, to)
 prev_econ = economy(p_from, p_to)
 score = db.scalar("SELECT score FROM driver_score ORDER BY period_start DESC LIMIT 1")
+hard = db.scalar("SELECT COUNT(*) FROM eco_flags WHERE hard_safety=1 AND ts BETWEEN ? AND ?",
+                 (frm, to), default=0) or 0
+eco_total = db.scalar("SELECT COUNT(*) FROM eco_events WHERE ts BETWEEN ? AND ?",
+                      (frm, to), default=0) or 0
+eco_per100 = eco_total / (period_sum("distance_m") / 1000 / 100) if period_sum("distance_m") else 0
 anomalies = db.scalar("SELECT COUNT(*) FROM anomalies WHERE ts BETWEEN ? AND ?",
                       (frm, to), default=0) or 0
 
@@ -70,11 +75,15 @@ cards_row([
     dict(label="Avg economy", value=f"{econ:.1f}", unit="L/100km",
          delta=round(econ - prev_econ, 1) if prev_econ else None,
          delta_good_up=False, hint="vs prev period"),
-    dict(label="Driver score", value=f"{score:.1f}" if score is not None else "—",
-         unit="/10", hint="latest week"),
+    dict(label="Hard safety events", value=f"{int(hard)}",
+         tone="alert" if hard else None,
+         hint="this period" if hard else "within normal range"),
     dict(label="Open anomalies", value=f"{int(anomalies)}", unit="",
          hint="this period" if anomalies else "none flagged"),
 ])
+_score = f"{score:.1f}" if score is not None else "—"
+st.caption(f"{int(eco_total)} driver events, mostly mild/medium · "
+           f"{eco_per100:.1f} per 100 km · Wialon score {_score} (reference)")
 
 st.markdown('<hr/>', unsafe_allow_html=True)
 st.subheader("Distance by day")
