@@ -37,13 +37,28 @@ jobs:
           python -m enrich.run
 
       - name: Commit updated database
+        # Resilient push. The persisted-credential path failed once with "could not read
+        # Username", so authenticate the remote explicitly; and always replay the freshly
+        # ingested DB onto the latest origin/main so a concurrent push (a manual code change,
+        # or an overlapping run) can't reject us non-fast-forward. Retried for the race where
+        # main moves mid-run.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if git status --porcelain data/truck.db | grep -q .; then
-            git config user.name  "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
+          git status --porcelain data/truck.db | grep -q . || { echo "No database changes."; exit 0; }
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          cp data/truck.db /tmp/fresh.db
+          for i in 1 2 3; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp /tmp/fresh.db data/truck.db
             git add data/truck.db
+            git diff --cached --quiet && { echo "no net change after rebase"; exit 0; }
             git commit -m "Automated ingest $(date -u +%Y-%m-%dT%H:%MZ)"
-            git push
-          else
-            echo "No database changes to commit."
-          fi
+            git push origin HEAD:main && exit 0
+            echo "push attempt $i failed; retrying in 5s"; sleep 5
+          done
+          echo "push failed after retries"; exit 1
