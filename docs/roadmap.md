@@ -113,3 +113,15 @@ Geography (monthly → daily).
 ## Driver page — deferred
 Per-trip violation breakdown (which trips had which types); driver-behaviour trend over time
 (events/100 km by week); geographic heat-map of where violations cluster.
+
+## Places editor — deferred
+When a cluster is unlabeled or mis-labeled (e.g. DBSCAN called it "Nairobi" but it's a
+specific workshop), an in-app editor would beat hand-editing `places.yaml`:
+- Click a place marker on the Map → "Rename this place" → text input + optional tag
+  (depot / customer / workshop).
+- Save writes the entry to `places.yaml` in the repo via the GitHub API — **reuse the
+  refresh-button auth** (`GITHUB_*` secrets, the `app/components/refresh.py` pattern).
+- The next ingestion (or an "Update now" run) picks up the new label.
+
+**Revisit when:** the dashboard sees enough use that manual YAML editing feels like
+friction. For now (click marker → edit `places.yaml` → commit), manual editing is acceptable.
