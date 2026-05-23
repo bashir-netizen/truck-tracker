@@ -30,3 +30,9 @@
   lat: -1.42372
   lon: 36.95368
   depot: true
+
+- label: Cheptiret (A104 roadside)
+  lat: 0.3564
+  lon: 35.3561
+  type: transit
+  notes: "A104 Eldoret–Nakuru — Diesel Power fuel + Cheptiret police post"
