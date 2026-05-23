@@ -83,22 +83,29 @@ def rebuild(con, unit_id):
         distance_km[w] += (dist or 0) / 1000.0
         weeks.add(w)
 
+    hard = defaultdict(int)  # week -> hard-safety event count
+    for ts, hs in con.execute(
+            "SELECT ts, hard_safety FROM eco_flags WHERE unit_id=?", (unit_id,)):
+        if hs:
+            w = week_start(ts)
+            hard[w] += 1
+            weeks.add(w)
+
     out = []
     for w in sorted(weeks):
         c = counts[w]
-        penalty = penalty_pts[w]
-        km = distance_km[w]
-        per_100km = penalty / (km / 100.0) if km > 0 else penalty
-        score = penalties_to_rank(per_100km)
+        # Total penalty -> Wialon rank, NOT distance-normalised, so it reproduces
+        # Wialon's own report (reference only; reads structurally low on Kenyan roads).
+        score = penalties_to_rank(penalty_pts[w])
         out.append((
-            unit_id, w, w + 7 * 86400, round(score, 1), int(round(km * 1000)),
+            unit_id, w, w + 7 * 86400, round(score, 1), int(round(distance_km[w] * 1000)),
             c.get("harsh_accel", 0), c.get("harsh_brake", 0),
-            c.get("harsh_corner", 0), c.get("speeding", 0),
+            c.get("harsh_corner", 0), c.get("speeding", 0), hard[w],
         ))
 
     con.executemany(
         "INSERT INTO driver_score "
-        "(unit_id, period_start, period_end, score, distance_m, "
-        " accel_count, brake_count, corner_count, speeding_count) "
-        "VALUES (?,?,?,?,?,?,?,?,?)", out)
+        "(unit_id, period_start, period_end, score, distance_m, accel_count, "
+        " brake_count, corner_count, speeding_count, hard_safety_count) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)", out)
     return len(out)

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 import config
-from enrich import anomalies, corridors, driver, journeys, maintenance, metrics, places
+from enrich import anomalies, corridors, driver, eco, journeys, maintenance, metrics, places
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = (ROOT / "ingest" / "schema.sql").read_text()
@@ -164,6 +164,22 @@ def test_driver_score_bounds_and_counts(con):
     row = con.execute("SELECT score, speeding_count FROM driver_score").fetchone()
     assert 0.0 <= row[0] <= 10.0          # Wialon 0-10 eco scale
     assert row[1] == 1
+
+
+def test_eco_hard_safety_rules():
+    from datetime import datetime, timezone
+
+    def at_utc(h):  # UTC hour h -> Kenya local h+3
+        return int(datetime(2026, 5, 20, h, 0, tzinfo=timezone.utc).timestamp())
+
+    night, day = at_utc(19), at_utc(9)            # local 22:00 (night) vs 12:00 (day)
+    assert eco.is_night(night) and not eco.is_night(day)
+    assert eco.hard_safety("harsh_brake", "extreme", None, day) == 1       # extreme
+    assert eco.hard_safety("speeding", "mild", "long_haul", day) == 0      # mild speeding
+    assert eco.hard_safety("speeding", "medium", "local", day) == 1        # medium speeding
+    assert eco.hard_safety("harsh_brake", "medium", "long_haul", night) == 1  # night highway
+    assert eco.hard_safety("harsh_brake", "medium", "local", night) == 0   # not highway
+    assert eco.hard_safety("harsh_brake", "medium", "long_haul", day) == 0  # daytime
 
 
 def test_penalties_to_rank_matches_wialon_bands():

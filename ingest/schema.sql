@@ -212,16 +212,28 @@ CREATE TABLE IF NOT EXISTS trip_metrics (
 );
 
 CREATE TABLE IF NOT EXISTS driver_score (
-    unit_id        INTEGER NOT NULL,
-    period_start   INTEGER NOT NULL,
-    period_end     INTEGER NOT NULL,
-    score          REAL,
-    distance_m     INTEGER,
-    accel_count    INTEGER,
-    brake_count    INTEGER,
-    corner_count   INTEGER,
-    speeding_count INTEGER,
+    unit_id           INTEGER NOT NULL,
+    period_start      INTEGER NOT NULL,
+    period_end        INTEGER NOT NULL,
+    score             REAL,         -- Wialon 0-10 rank (reference)
+    distance_m        INTEGER,
+    accel_count       INTEGER,
+    brake_count       INTEGER,
+    corner_count      INTEGER,
+    speeding_count    INTEGER,
+    hard_safety_count INTEGER,      -- genuine safety events (road-condition agnostic)
     PRIMARY KEY (unit_id, period_start, period_end)
+);
+
+-- Per-event derived flags for the Driver page (raw eco_events untouched).
+CREATE TABLE IF NOT EXISTS eco_flags (
+    unit_id           INTEGER NOT NULL,
+    ts                INTEGER NOT NULL,
+    type              TEXT,
+    severity          TEXT,
+    journey_character TEXT,
+    hard_safety       INTEGER,
+    PRIMARY KEY (unit_id, ts, type)
 );
 
 CREATE TABLE IF NOT EXISTS service_status (

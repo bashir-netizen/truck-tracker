@@ -95,6 +95,12 @@ PENALTY_POINTS = {
 }
 PENALTY_DEFAULT = 100  # fallback for any (criterion, severity) not listed above
 
+# Hard-safety: events that matter regardless of road conditions (Kenya context).
+KENYA_UTC_OFFSET_H = 3                              # local time = UTC + 3
+NIGHT_START_HOUR = 19                               # local
+NIGHT_END_HOUR = 5
+HARD_SAFETY_SPEEDING_SEVERITIES = ("medium", "extreme")
+
 # L/100km is meaningless on near-zero-distance maneuvers; only compute it
 # (and judge drift) for trips at least this long.
 MIN_ECONOMY_KM = 2

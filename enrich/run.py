@@ -15,12 +15,12 @@ import sys
 from pathlib import Path
 
 import config
-from enrich import (anomalies, corridors, driver, journeys, maintenance,
+from enrich import (anomalies, corridors, driver, eco, journeys, maintenance,
                     metrics, places)
 
 SCHEMA = (Path(__file__).resolve().parents[1] / "ingest" / "schema.sql").read_text()
 DERIVED = ["trip_metrics", "journeys", "corridors", "driver_score",
-           "service_status", "anomalies", "places", "place_visits"]
+           "service_status", "anomalies", "places", "place_visits", "eco_flags"]
 
 
 def main():
@@ -43,6 +43,7 @@ def main():
         journeys.assign_places(con, unit_id)
         n_corridors = corridors.rebuild(con, unit_id)
         n_metrics = metrics.rebuild(con, unit_id)
+        eco.rebuild(con, unit_id)            # eco_flags (hard-safety) before driver
         n_driver = driver.rebuild(con, unit_id)
         n_services = maintenance.rebuild(con, unit_id)
         n_anom = anomalies.rebuild(con, unit_id)
