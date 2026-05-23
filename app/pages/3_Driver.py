@@ -62,8 +62,8 @@ with st.expander("Why the Wialon score may not reflect local conditions"):
         "regardless of how the driver behaves — so the score reads structurally low "
         "(this unit: ~1/10) even with no extreme events. Treat it as a **reference** to "
         "cross-check Wialon's own UI, not as a verdict on the driver. The headline "
-        "metrics above (hard-safety events, events per 100 km) are the actionable ones. "
-        "See `docs/scoring.md`.")
+        "metrics above (hard-safety events, events per 100 km) are the actionable ones.\n\n"
+        f"{theme.WIALON_SCORE_NOTE} See `docs/scoring.md`.")
 
 # --- events worth attention (hard-safety only) ----------------------------
 st.markdown('<hr/>', unsafe_allow_html=True)

@@ -19,6 +19,14 @@ So the score is treated as a **reference** — useful to cross-check against Wia
 own UI, but **not** a verdict on the driver. We deliberately do **not** normalize
 it per distance, so it reproduces Wialon's own report number.
 
+Computed using Wialon's documented penalty→rank formula with this unit's configured
+penalty points. Cross-checkable against Wialon's Eco Driving tab. The remote report
+API does not expose this value, so we reproduce it locally. (Verified against the live
+API on 2026-05-23: the `unit_ecodriving` report returns only violation rows, and
+requested `rank`/`rating`/`penalties` columns are silently dropped. This unit:
+computed **1.0** vs Wialon's UI **~1.1** — a rounding/interpolation gap, not a
+methodology difference.)
+
 ## What we lead with instead: hard-safety events
 
 "Hard-safety" events are ones that are unsafe **regardless of road conditions**:

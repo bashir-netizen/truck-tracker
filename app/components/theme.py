@@ -38,6 +38,14 @@ FONT = ('-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, '
 # Token-free light basemap (Carto Positron) — no Mapbox key required.
 MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
 
+# Canonical wording for the Wialon eco score — reuse everywhere the score appears
+# (Driver card, Overview Care card) so the phrasing can never drift.
+WIALON_SCORE_NOTE = (
+    "Computed using Wialon's documented penalty→rank formula with this unit's "
+    "configured penalty points. Cross-checkable against Wialon's Eco Driving tab. "
+    "The remote report API does not expose this value, so we reproduce it locally."
+)
+
 _CSS = f"""
 <style>
   :root {{ --accent: {ACCENT}; --ink: {INK}; --muted: {MUTED};

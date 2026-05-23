@@ -15,6 +15,18 @@ theme.page_setup("Maintenance")
 theme.freshness_caption()
 theme.header("Maintenance", "Service due, driven by actual distance")
 
+st.markdown(
+    '<div style="background:#FFFFFF;border:1px solid #E5E7EB;border-left:3px solid #c47d1d;'
+    'border-radius:8px;padding:.65rem .9rem;margin:0 0 1.1rem;font-size:.9rem;color:#0F172A">'
+    '<span style="display:inline-block;font-size:.64rem;font-weight:700;letter-spacing:.06em;'
+    'text-transform:uppercase;color:#c47d1d;border:1px solid #c47d1d;border-radius:999px;'
+    'padding:.03rem .45rem;margin-right:.5rem">Inferred</span>'
+    'Service intervals shown are <b>generic FAW defaults</b> calculated from a 0 km '
+    'baseline — <b>not</b> the truck’s actual service history. Update '
+    '<code>services.yaml</code> with real last-service data, or ingest Wialon Maintenance '
+    'when configured.</div>',
+    unsafe_allow_html=True)
+
 NAMES = {"engine_oil": "Engine oil", "transmission": "Transmission",
          "air_filter": "Air filter", "major_service": "Major service"}
 

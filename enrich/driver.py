@@ -1,8 +1,16 @@
 """Rolling driver score per ISO week, on Wialon's 0-10 eco scale.
 
-For each week we sum eco-driving penalty points (config.PENALTY_POINTS),
-normalise per 100 km driven, and convert to a 0-10 rank using Wialon's
-documented penalty->rank table (higher = better). Distance comes from trips.
+For each week we sum the eco-driving penalty points (config.PENALTY_POINTS, the
+unit's exact configured penalties) and convert that TOTAL to a 0-10 rank via
+Wialon's documented penalty->rank table (higher = better). We deliberately do
+NOT normalise per distance, so the result reproduces Wialon's own number.
+
+Computed using Wialon's documented penalty→rank formula with this unit's configured
+penalty points. Cross-checkable against Wialon's Eco Driving tab. The remote report
+API does not expose this value, so we reproduce it locally — verified live 2026-05-23
+(the `unit_ecodriving` report returns only violation rows; requested rank/rating/
+penalties columns are dropped, stats/total empty). This unit: computed 1.0 vs Wialon's
+~1.1. It reads structurally low on Kenyan roads (reference only).
 
 Wialon "Eco driving" rank conversion (penalty points -> rank), from the
 Wialon Hosting help, "Eco driving" report table:
