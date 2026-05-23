@@ -12,6 +12,7 @@ We interpolate linearly within each band. Source:
 https://help.wialon.com/en/wialon-hosting/user-guide/monitoring-system/reports/report-templates/report-contents/tables/table-types/eco-driving
 """
 
+import json
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -35,6 +36,24 @@ def penalties_to_rank(p):
     return round(max(1.0, 2.0 - (p - 1067) / 1067.0), 1)  # beyond the table
 
 
+def _penalty_key(violation_name):
+    """'Acceleration: medium' -> 'acceleration_medium' (matches PENALTY_POINTS)."""
+    parts = [p.strip().lower() for p in (violation_name or "").split(":")]
+    crit = parts[0].split()[-1] if parts and parts[0] else ""
+    sev = parts[1] if len(parts) > 1 else "medium"
+    return f"{crit}_{sev}"
+
+
+def event_penalty(raw):
+    """Penalty points for one eco event, from its violation_name in `raw`."""
+    try:
+        cell = json.loads(raw)["c"][4]
+        vn = cell.get("t") if isinstance(cell, dict) else cell
+    except Exception:
+        vn = None
+    return config.PENALTY_POINTS.get(_penalty_key(vn), config.PENALTY_DEFAULT)
+
+
 def week_start(ts):
     """Epoch of the Monday 00:00 UTC for the week containing ts."""
     dt = datetime.fromtimestamp(ts, timezone.utc)
@@ -47,13 +66,15 @@ def rebuild(con, unit_id):
     con.execute("DELETE FROM driver_score")
 
     counts = defaultdict(lambda: defaultdict(int))  # week -> type -> n
+    penalty_pts = defaultdict(float)                 # week -> summed penalty points
     distance_km = defaultdict(float)                 # week -> km
     weeks = set()
 
-    for ts, etype in con.execute(
-            "SELECT ts, type FROM eco_events WHERE unit_id=?", (unit_id,)):
+    for ts, etype, raw in con.execute(
+            "SELECT ts, type, raw FROM eco_events WHERE unit_id=?", (unit_id,)):
         w = week_start(ts)
         counts[w][etype] += 1
+        penalty_pts[w] += event_penalty(raw)
         weeks.add(w)
 
     for sts, dist in con.execute(
@@ -65,7 +86,7 @@ def rebuild(con, unit_id):
     out = []
     for w in sorted(weeks):
         c = counts[w]
-        penalty = sum(config.PENALTY_POINTS.get(t, 10) * n for t, n in c.items())
+        penalty = penalty_pts[w]
         km = distance_km[w]
         per_100km = penalty / (km / 100.0) if km > 0 else penalty
         score = penalties_to_rank(per_100km)

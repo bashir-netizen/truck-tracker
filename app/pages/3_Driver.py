@@ -29,8 +29,8 @@ total = len(events)
 worst = (events["type"].map(TYPE_LABELS).value_counts().idxmax() if total else "—")
 
 cards_row([
-    dict(label="Driver score", value=f"{score:.0f}" if score is not None else "—",
-         unit="/100", hint="latest week · higher is better"),
+    dict(label="Driver score", value=f"{score:.1f}" if score is not None else "—",
+         unit="/10", hint="latest week · higher is better"),
     dict(label="Events", value=f"{total}", unit="", hint="this period"),
     dict(label="Most common", value=worst, unit=""),
 ])
@@ -40,12 +40,16 @@ st.subheader("Weekly score")
 weeks = db.q("SELECT period_start, score FROM driver_score ORDER BY period_start")
 if weeks.empty:
     empty_state("No score yet", "The score appears once eco-driving events are recorded.")
+elif len(weeks) < 3:
+    latest = weeks.iloc[-1]["score"]
+    st.markdown(f"Score this week: **{latest:.1f}/10** — limited history; more weeks "
+                "will appear as data accumulates.")
 else:
     weeks["week"] = pd.to_datetime(weeks["period_start"], unit="s", utc=True)
     fig = px.line(weeks, x="week", y="score", markers=True)
     fig.update_traces(line_color=theme.ACCENT,
-                      hovertemplate="week of %{x|%d %b}<br>score %{y:.0f}<extra></extra>")
-    fig.update_yaxes(range=[0, 100], title=None)
+                      hovertemplate="week of %{x|%d %b}<br>score %{y:.1f}<extra></extra>")
+    fig.update_yaxes(range=[0, 10], dtick=2, title=None)
     fig.update_xaxes(title=None)
     st.plotly_chart(theme.style_fig(fig, height=240), use_container_width=True)
 

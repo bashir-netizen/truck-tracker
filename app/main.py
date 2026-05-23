@@ -70,8 +70,8 @@ cards_row([
     dict(label="Avg economy", value=f"{econ:.1f}", unit="L/100km",
          delta=round(econ - prev_econ, 1) if prev_econ else None,
          delta_good_up=False, hint="vs prev period"),
-    dict(label="Driver score", value=f"{score:.0f}" if score is not None else "—",
-         unit="/100", hint="latest week"),
+    dict(label="Driver score", value=f"{score:.1f}" if score is not None else "—",
+         unit="/10", hint="latest week"),
     dict(label="Open anomalies", value=f"{int(anomalies)}", unit="",
          hint="this period" if anomalies else "none flagged"),
 ])

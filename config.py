@@ -77,19 +77,23 @@ MAINTENANCE_INTERVALS = {
 }
 
 # --- Driver eco score (Stage 3) -------------------------------------------
-# Penalty POINTS per eco violation, summed and normalised per 100 km, then
-# mapped to a 0-10 rank via Wialon's documented penalty->rank table (see
-# enrich/driver.py). Wialon does not expose its own per-criterion penalty
-# points through the report columns our token can read, so these are tunable
-# here to match the unit's Wialon Eco Driving configuration.
+# Penalty POINTS per eco violation (criterion + severity), summed, normalised
+# per 100 km, then mapped to a 0-10 rank via Wialon's documented penalty->rank
+# table (see enrich/driver.py).
+# These MIRROR THE WIALON ECO DRIVING CONFIG for this unit and must be updated
+# here if the Wialon config changes (the report does not expose them to us).
 PENALTY_POINTS = {
-    "harsh_accel":  30,
-    "harsh_brake":  30,
-    "harsh_corner": 20,
-    "speeding":     40,
-    "idling":       10,
-    "other":        10,
+    "acceleration_medium":  500,
+    "acceleration_extreme": 2000,
+    "brake_medium":         500,
+    "brake_extreme":        2000,
+    "speeding_mild":        100,
+    "speeding_medium":      2000,
+    "speeding_extreme":     5000,
+    "turn_medium":          500,
+    "turn_extreme":         500,
 }
+PENALTY_DEFAULT = 100  # fallback for any (criterion, severity) not listed above
 
 # L/100km is meaningless on near-zero-distance maneuvers; only compute it
 # (and judge drift) for trips at least this long.
