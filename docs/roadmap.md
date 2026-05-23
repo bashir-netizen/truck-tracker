@@ -1,5 +1,22 @@
 # Re-prioritized roadmap (post-Wialon-audit)
 
+## Current direction (2026-05-23)
+Owner is staying in **pull-mode** for now — no Wialon-side configuration is being
+performed. Configure-mode P1 items are **deferred indefinitely**; pull-mode P1 items
+remain on the table.
+
+**Active (pull-mode, read access only):**
+- Voltage / power ingestion (device-tamper / power-cut signal)
+- Ignition (DIN1) ingestion *if wired* (real idling detection)
+- Wialon native fuel-theft / filling event ingestion (corroborates our rules)
+
+**Deferred (need manage rights, or not feasible):**
+- Geofences for known sites
+- Notifications setup (real-time fuel-theft / device-offline alerts)
+- Maintenance intervals + last-service logs in Wialon
+- ~~"Open in Wialon" deep-links~~ — dropped as infeasible (Track Player is an in-app
+  modal with no URL state); in-dashboard playback (Map, Task 3) covers it instead.
+
 **How to read this.** Gated by the owner's Wialon access level (audit §0). "Pull"
 items need only read access; "Configure" items need *manage* rights on the unit/resource.
 Goal: stop duplication, integrate high-value Wialon capabilities, preserve our
