@@ -1,6 +1,6 @@
 # Place label overrides. Each entry relabels the nearest detected place within
 # 300 m of these coordinates. Committed so the scheduled cloud job applies them.
-# After editing, re-run `python -m enrich.run` (or wait for the 3-hourly job).
+# After editing, re-run `python -m enrich.run` (or wait for the hourly job).
 #
 # `depot: true` (or `home: true`) tags that place as a depot on the Overview,
 # regardless of journey patterns. Places without the flag fall back to a
@@ -21,15 +21,27 @@
 #     lon: <lon>
 #     type: transit
 
-- label: Genwatt office (Athi River)
-  lat: -1.43647
-  lon: 36.96062
-  depot: true
+- label: Nairobi yard (Mugumoini)
+  lat: -1.332095
+  lon: 36.872111
+  type: depot
+  home: true
+  notes: "Truck home base — Mugumoini, Nairobi, near the ICD. Confirmed by Genwatt May 2026; overnight parks and stages between runs."
 
-- label: Athi River yard
+# Bamburi Cement's Athi River facility is the primary cement-pickup CUSTOMER (Genwatt hauls
+# for Bamburi). Two detected spots ~1.6 km apart, both labelled the same so they read as one
+# customer. These replace the old (wrong) "Athi River yard" / "Genwatt office" depot entries.
+- label: Bamburi Cement (Athi River)
   lat: -1.42372
   lon: 36.95368
-  depot: true
+  type: customer
+  notes: "Bamburi Cement Athi River facility — cement pickup. Corrected May 2026: this is a customer, not the yard. Was 'Athi River yard'."
+
+- label: Bamburi Cement (Athi River)
+  lat: -1.43647
+  lon: 36.96062
+  type: customer
+  notes: "Bamburi Cement Athi River facility — second loading spot ~1.6 km from the other. Was 'Genwatt office (Athi River)'."
 
 - label: Cheptiret (A104 roadside)
   lat: 0.3564
