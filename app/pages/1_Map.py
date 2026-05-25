@@ -36,6 +36,20 @@ theme.page_setup("Map")
 # Mode 2 — Journey View: a selected round trip (?round_trip=<id>, or the session
 # handoff from the Overview button) shows that one trip and stops here. No selection
 # -> Mode 1 (period overview) below, unchanged.
+_jcy = st.query_params.get("delivery_cycle")
+if _jcy is None and "journey_cycle" in st.session_state:
+    _jcy = str(st.session_state["journey_cycle"])
+    st.query_params["delivery_cycle"] = _jcy
+if _jcy is not None:
+    st.session_state.pop("journey_cycle", None)
+    try:
+        _cid = int(_jcy)
+    except (TypeError, ValueError):
+        st.query_params.clear()
+    else:
+        journey_view.render("cycle", _cid)
+        st.stop()
+
 _jrt = st.query_params.get("round_trip")
 if _jrt is None and "journey_rt" in st.session_state:
     _jrt = str(st.session_state["journey_rt"])
@@ -47,7 +61,7 @@ if _jrt is not None:
     except (TypeError, ValueError):
         st.query_params.clear()
     else:
-        journey_view.render(_rtid)
+        journey_view.render("round_trip", _rtid)
         st.stop()
 
 ROUTE_CLASSES = ["long_haul", "regional", "local"]

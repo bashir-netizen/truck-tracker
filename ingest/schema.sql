@@ -251,6 +251,29 @@ CREATE TABLE IF NOT EXISTS round_trips (
 );
 CREATE INDEX IF NOT EXISTS idx_round_trips_unit_start ON round_trips (unit_id, start_ts);
 
+-- Delivery cycles (Task 10): the hauler's operational unit — load at an anchor (depot OR a
+-- loading customer) -> deliver -> arrive at the next anchor. Anchored on loading customers,
+-- where round_trips is depot-anchored. Both views coexist.
+CREATE TABLE IF NOT EXISTS delivery_cycles (
+    cycle_id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit_id                 INTEGER NOT NULL,
+    cycle_start_ts          INTEGER NOT NULL,  -- arrival at the loading anchor
+    cycle_end_ts            INTEGER,           -- arrival at the next anchor (NULL = incomplete)
+    origin_place_id         INTEGER,
+    origin_place_name       TEXT,
+    destination_place_id    INTEGER,
+    destination_place_name  TEXT,
+    cycle_type              TEXT,              -- delivery | positioning | incomplete
+    total_distance_km       REAL,
+    total_duration_s        INTEGER,
+    constituent_journey_ids TEXT,              -- JSON array
+    via_places              TEXT,              -- JSON array (named intermediates)
+    return_leg_type         TEXT,              -- populated in Task 12
+    return_leg_confidence   TEXT               -- populated in Task 12
+);
+CREATE INDEX IF NOT EXISTS idx_delivery_cycles_unit_start
+    ON delivery_cycles (unit_id, cycle_start_ts);
+
 CREATE TABLE IF NOT EXISTS trip_metrics (
     unit_id           INTEGER NOT NULL,
     start_ts          INTEGER NOT NULL,

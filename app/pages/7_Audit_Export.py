@@ -58,6 +58,32 @@ if not rt.empty:
                        file_name=fname("round-trips"), mime="text/csv")
     st.markdown('<hr/>', unsafe_allow_html=True)
 
+# Delivery cycles (load-to-load operational unit) — the hauler's billable view.
+cyc = db.q("SELECT cycle_id, cycle_start_ts, cycle_end_ts, origin_place_name o, "
+           "destination_place_name d, cycle_type t, return_leg_type rl, total_distance_km km, "
+           "total_duration_s dur, via_places via FROM delivery_cycles "
+           "WHERE cycle_start_ts BETWEEN ? AND ? ORDER BY cycle_start_ts DESC", (frm, to))
+if not cyc.empty:
+    st.subheader("Delivery cycles")
+    ccl = pd.DataFrame({
+        "Cycle": cyc["cycle_id"],
+        "Start": theme.local_series(cyc["cycle_start_ts"]),
+        "End": theme.local_series(cyc["cycle_end_ts"]),
+        "Origin": cyc["o"],
+        "Destination": cyc["d"].fillna("—"),
+        "Type": cyc["t"],
+        "Return leg": cyc["rl"].fillna("—"),
+        "Distance (km)": cyc["km"].round(0),
+        "Duration (h)": (cyc["dur"] / 3600).round(1),
+        "Via": cyc["via"].map(lambda s: ", ".join(_json.loads(s or "[]")) or "—"),
+    })
+    st.dataframe(ccl, hide_index=True, width="stretch", column_config={
+        "Start": st.column_config.DatetimeColumn("Start", format="DD MMM YYYY, HH:mm"),
+        "End": st.column_config.DatetimeColumn("End", format="DD MMM YYYY, HH:mm")})
+    st.download_button("Download delivery-cycles CSV", data=ccl.to_csv(index=False).encode("utf-8"),
+                       file_name=fname("delivery-cycles"), mime="text/csv")
+    st.markdown('<hr/>', unsafe_allow_html=True)
+
 
 def lbl(pid):
     return P.get(int(pid), "—") if not pd.isna(pid) else "—"

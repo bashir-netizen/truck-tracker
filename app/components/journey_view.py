@@ -55,6 +55,30 @@ def load(rt_id):
         "via": json.loads(r.via_places or "[]"), "rvia": json.loads(r.return_via_places or "[]")}
 
 
+def load_cycle(cycle_id):
+    """A delivery cycle (Task 10) normalized into the same shape as a round trip, or None."""
+    df = db.q("SELECT cycle_id, unit_id, cycle_start_ts, cycle_end_ts, destination_place_id, "
+              "destination_place_name, cycle_type, total_distance_km, total_duration_s, "
+              "via_places, constituent_journey_ids FROM delivery_cycles WHERE cycle_id=?", (cycle_id,))
+    if df.empty:
+        return None
+    r = df.iloc[0]
+    end = None if pd.isna(r.cycle_end_ts) else int(r.cycle_end_ts)
+    if end is None:                                  # incomplete: use the last constituent journey
+        jids = json.loads(r.constituent_journey_ids or "[]")
+        if jids:
+            ph = ",".join("?" * len(jids))
+            end = db.scalar(f"SELECT MAX(end_ts) FROM journeys WHERE journey_id IN ({ph})",
+                            tuple(jids))
+    return {
+        "id": int(r.cycle_id), "unit_id": int(r.unit_id), "start_ts": int(r.cycle_start_ts),
+        "end_ts": int(end) if end else int(r.cycle_start_ts),
+        "primary_id": None if pd.isna(r.destination_place_id) else int(r.destination_place_id),
+        "primary_name": r.destination_place_name, "cls": r.cycle_type,
+        "km": float(r.total_distance_km or 0), "dur_s": int(r.total_duration_s or 0),
+        "via": json.loads(r.via_places or "[]"), "rvia": []}
+
+
 def _journeys(rt):
     """Constituent journeys in order (the round trip is contiguous depot->depot)."""
     return db.q("SELECT journey_id, start_ts, end_ts, origin_place_id, dest_place_id "
@@ -161,8 +185,9 @@ def _back():
     st.switch_page("main.py")
 
 
-def render(rt_id):
-    rt = load(rt_id)
+def render(kind, ident):
+    rt = load(ident) if kind == "round_trip" else load_cycle(ident)
+    noun = "run" if kind == "round_trip" else "delivery"
     if st.button("← Back to Overview", key="jv_back"):
         _back()
     if rt is None:
@@ -178,21 +203,25 @@ def render(rt_id):
     evs = events(rt)
 
     # --- header ---------------------------------------------------------
-    prim = rt["primary_name"] or "Round trip"
-    depot_name = next((w["name"] for w in wps if w["is_depot"]), "depot")
-    via_bits = []
-    if rt["via"]:
-        via_bits.append("via " + ", ".join(rt["via"]) + " (outbound)")
-    if rt["rvia"]:
-        via_bits.append(", ".join(rt["rvia"]) + " (return)")
+    prim = rt["primary_name"] or ("Round trip" if kind == "round_trip" else "Delivery")
+    start_name = wps[0]["name"] if wps else "—"
+    end_name = wps[-1]["name"] if wps else "—"
+    if kind == "round_trip":
+        via_bits = []
+        if rt["via"]:
+            via_bits.append("via " + ", ".join(rt["via"]) + " (outbound)")
+        if rt["rvia"]:
+            via_bits.append(", ".join(rt["rvia"]) + " (return)")
+    else:
+        via_bits = ["via " + ", ".join(rt["via"])] if rt["via"] else []
     st.markdown(
         f'<div class="tt-card"><div style="display:flex;justify-content:space-between;'
-        f'align-items:baseline;gap:.5rem"><div class="tt-h2" style="margin:0">{prim} run '
+        f'align-items:baseline;gap:.5rem"><div class="tt-h2" style="margin:0">{prim} {noun} '
         f'<span class="tt-pill neutral">{CLASS_LABELS.get(rt["cls"], rt["cls"])}</span></div>'
         f'{theme.confidence_badge("inferred")}</div>'
         f'<div class="tt-small">{theme.fmt_dt(rt["start_ts"])} → {theme.fmt_dt(rt["end_ts"])} · '
         f'~{rt["km"]:,.0f} km · {theme.fmt_dur(rt["dur_s"])}</div>'
-        f'<div class="tt-small"><b>{depot_name} → {prim} → {depot_name}</b></div>'
+        f'<div class="tt-small"><b>{start_name} → {prim} → {end_name}</b></div>'
         + (f'<div class="tt-small">{" · ".join(via_bits)}</div>' if via_bits else '')
         + '</div>', unsafe_allow_html=True)
 

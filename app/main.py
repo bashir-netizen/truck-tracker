@@ -166,7 +166,47 @@ with c3:
                 icon="activity", delta_text=f"{util:.0f}% utilization", delta_direction="flat",
                 source=f"{active_days} active · {period_days - active_days} idle days")
 
-# === Section 4 — Geography (round trips) =================================
+def _render_cycles(frm, to):
+    """Delivery-cycle view: load-to-load operational units (Task 10)."""
+    cyc = db.q("SELECT cycle_id, origin_place_name o, destination_place_name d, cycle_type t, "
+               "total_distance_km km, total_duration_s dur, via_places via, cycle_start_ts s, "
+               "cycle_end_ts e FROM delivery_cycles WHERE cycle_start_ts BETWEEN ? AND ? "
+               "ORDER BY cycle_start_ts DESC", (frm, to))
+    if cyc.empty:
+        empty_state("No delivery cycles this period")
+        return
+    done = int((cyc["t"] != "incomplete").sum())
+    prog = int((cyc["t"] == "incomplete").sum())
+    st.markdown(f'<div class="tt-small" style="margin:.2rem 0 .4rem"><b>Delivery cycles this '
+                f'period</b> ({done} completed · {prog} in progress)</div>', unsafe_allow_html=True)
+    badge = theme.confidence_badge("inferred")
+    for r in cyc.itertuples():
+        via = ", ".join(json.loads(r.via or "[]"))
+        if r.t == "positioning":
+            title, ctx = "Repositioning", f"{r.o} → next load"
+        else:
+            title = f'{r.d or "—"} delivery' + (" (in progress)" if r.t == "incomplete" else "")
+            ctx = " → ".join(x for x in (r.o, via, r.d) if x)
+        when = (_fmt_range(int(r.s), int(r.e)) if r.e == r.e        # r.e is NaN when incomplete
+                else f"started {theme.fmt_dt(int(r.s), False)}")
+        stats = f'{when} · {(r.km or 0):,.0f} km · {theme.fmt_dur(int(r.dur or 0))}'
+        c1, c2 = st.columns([6, 1])
+        with c1:
+            st.markdown(
+                '<div style="padding:.4rem 0;border-bottom:1px solid var(--border)">'
+                '<div style="display:flex;justify-content:space-between;align-items:baseline">'
+                f'<div><b>{title}</b> <span class="tt-pill neutral">{r.t}</span></div>{badge}</div>'
+                + (f'<div class="tt-small">{ctx}</div>' if ctx else '')
+                + f'<div class="tt-small">{stats}</div></div>', unsafe_allow_html=True)
+        with c2:
+            if st.button("View →", key=f"jv_cyc_{r.cycle_id}", help="See this cycle on the map"):
+                st.session_state["journey_cycle"] = int(r.cycle_id)
+                st.session_state.pop("journey_rt", None)
+                st.query_params["delivery_cycle"] = str(int(r.cycle_id))
+                st.switch_page("pages/1_Map.py")
+
+
+# === Section 4 — Geography (round trips + delivery cycles) ===============
 st.markdown('<div style="height:1.8rem"></div>', unsafe_allow_html=True)
 st.markdown('<div class="tt-h2">Where it went</div>', unsafe_allow_html=True)
 
@@ -205,7 +245,11 @@ with gcol:
             st.markdown(f'<div class="tt-small" style="margin:.1rem 0 .6rem;color:{col}">{body}'
                         f'</div>', unsafe_allow_html=True)
 
-    if rts.empty:
+    view = st.segmented_control("View", ["Delivery cycles", "Depot returns"],
+                                default="Delivery cycles", key="geo_view") or "Delivery cycles"
+    if view == "Delivery cycles":
+        _render_cycles(frm, to)
+    elif rts.empty:
         empty_state("No completed round trips this period")
     else:
         groups = {}
