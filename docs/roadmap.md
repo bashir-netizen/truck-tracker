@@ -167,3 +167,19 @@ Typed places + the dwell-time signal shipped (Task 6): each place carries a `typ
 
 **Revisit when:** clusters accumulate faster than hand-typing keeps up, or Genwatt shares
 a customer list. For now, the dwell summary + Map callouts make manual typing low-effort.
+
+## Place classification — deferred
+The loading-customer detector shipped (`enrich/place_roles.py`): each place gets a
+`suggested_role` (loading / destination / transit / ambiguous) from its journey position
+(first-stop-after-home vs farthest point) + p75 dwell, surfaced on the Map as "Suspected
+loading customers / delivery destinations". Calibrated against Bamburi (a known loading
+customer). Still deferred:
+- **One-click "accept suggestion"** → write the cluster into `places.yaml` via the GitHub API
+  (reuse the refresh-button auth) instead of hand-editing.
+- **Industry classification** (cement plant vs factory vs warehouse) once auto-geocoding lands.
+- **Paired-route detection** ("the truck always visits A right before B" — linked loading/route
+  patterns).
+- **Confidence scoring** on role suggestions (0–100%) from sample size + pattern consistency.
+- **Multi-row customers (view-level):** detection already groups same-label clusters; still to
+  do is aggregating stats across rows in a customer-level / "top customers" view (one facility
+  that spans clusters ~km apart should read as one customer everywhere, not N rows).

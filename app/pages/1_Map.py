@@ -518,6 +518,56 @@ if not unlabeled.empty:
         st.code(pyaml.read_text() if pyaml.exists()
                 else "- label: Athi River yard\n  lat: -1.437\n  lon: 36.961\n", language="yaml")
 
+
+# --- Suspected cargo points (place_roles) ---------------------------------
+def _role_suggestions(role):
+    """Unlabeled clusters whose journey pattern suggests `role`, deduped by name."""
+    df = db.q("SELECT label, lat, lon, total_visits, median_dwell_s, role_context FROM places "
+              "WHERE suggested_role=? AND COALESCE(yaml_labeled,0)=0 AND total_visits>=1 "
+              "ORDER BY total_visits DESC", (role,))
+    out = {}
+    for r in df.itertuples():
+        if r.label in out:                       # same-name clusters = one facility
+            out[r.label]["visits"] += int(r.total_visits or 0)
+            continue
+        out[r.label] = {"label": r.label, "lat": float(r.lat), "lon": float(r.lon),
+                        "visits": int(r.total_visits or 0), "median": r.median_dwell_s,
+                        "ctx": json.loads(r.role_context or "{}")}
+    return list(out.values())
+
+
+def _render_suggestions(title, rows, kind):
+    if not rows:                                 # hide the section entirely when empty
+        return
+    st.markdown('<hr/>', unsafe_allow_html=True)
+    st.subheader(title)
+    st.caption("Likely cargo points inferred from visit patterns — verify and label in "
+               "places.yaml.")
+    for d in rows:
+        if kind == "loading":
+            lb = d["ctx"].get("loaded_before") or {}
+            detail = "Loaded before: " + (", ".join(f"{k} ({v}×)" for k, v in lb.items()) or "—")
+            sug = "customer (loading)"
+        else:
+            detail = "Reached as the farthest point of a trip"
+            sug = "customer (destination)"
+        med = theme.fmt_dur(d["median"]) if d["median"] else "—"
+        maps = f'https://www.google.com/maps?q={d["lat"]:.5f},{d["lon"]:.5f}'
+        st.markdown(
+            f'<div class="tt-card"><div style="display:flex;justify-content:space-between;'
+            f'align-items:baseline;gap:.5rem"><div><b>{d["label"]}</b> '
+            f'<span class="tt-small">· {d["visits"]} visit{"s" if d["visits"] != 1 else ""} · '
+            f'median {med}</span></div>'
+            f'<a href="{maps}" target="_blank" class="tt-small">View on Google Maps →</a></div>'
+            f'<div class="tt-small">{detail}</div>'
+            f'<div class="tt-small">Suggested type: <b>{sug}</b> · {d["lat"]:.4f}, {d["lon"]:.4f}'
+            f'</div></div>', unsafe_allow_html=True)
+
+
+_render_suggestions("Suspected loading customers", _role_suggestions("loading"), "loading")
+_render_suggestions("Suspected delivery destinations", _role_suggestions("destination"),
+                    "destination")
+
 # --- Route summary + cost / what-if (kept; tucked away) --------------------
 all_routes = [(jc, dm) for jc, dm in db.q(
     "SELECT journey_character, distance_m FROM journeys WHERE is_local=0 "

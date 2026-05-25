@@ -157,7 +157,17 @@ CREATE TABLE IF NOT EXISTS places (
     longest_dwell_s    INTEGER,
     shortest_dwell_s   INTEGER,
     dwell_pattern_hint TEXT,        -- brief|medium|long|overnight
-    suggested_type_from_dwell TEXT  -- transit?|rest?|customer?|depot?|overnight?
+    suggested_type_from_dwell TEXT, -- transit?|rest?|customer?|depot?|overnight?
+    -- Journey-role signal (Part 3, enrich/place_roles.py): where the place sits in trips.
+    total_visits       INTEGER,
+    loading_visits     INTEGER,
+    destination_visits INTEGER,
+    via_visits         INTEGER,
+    loading_share      REAL,
+    destination_share  REAL,
+    suggested_role     TEXT,         -- loading|destination|transit|ambiguous
+    role_context       TEXT,         -- JSON: loading -> dests reached, etc.
+    yaml_labeled       INTEGER       -- 1 = matched a places.yaml entry (owner-classified)
 );
 
 -- Journeys: trip legs stitched across short gaps; the real A->B runs.
