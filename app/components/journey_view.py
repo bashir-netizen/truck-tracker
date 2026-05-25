@@ -59,7 +59,8 @@ def load_cycle(cycle_id):
     """A delivery cycle (Task 10) normalized into the same shape as a round trip, or None."""
     df = db.q("SELECT cycle_id, unit_id, cycle_start_ts, cycle_end_ts, destination_place_id, "
               "destination_place_name, cycle_type, total_distance_km, total_duration_s, "
-              "via_places, constituent_journey_ids FROM delivery_cycles WHERE cycle_id=?", (cycle_id,))
+              "via_places, constituent_journey_ids, return_leg_type FROM delivery_cycles "
+              "WHERE cycle_id=?", (cycle_id,))
     if df.empty:
         return None
     r = df.iloc[0]
@@ -76,7 +77,8 @@ def load_cycle(cycle_id):
         "primary_id": None if pd.isna(r.destination_place_id) else int(r.destination_place_id),
         "primary_name": r.destination_place_name, "cls": r.cycle_type,
         "km": float(r.total_distance_km or 0), "dur_s": int(r.total_duration_s or 0),
-        "via": json.loads(r.via_places or "[]"), "rvia": []}
+        "via": json.loads(r.via_places or "[]"), "rvia": [],
+        "return_leg": r.return_leg_type if isinstance(r.return_leg_type, str) else None}
 
 
 def _journeys(rt):
@@ -214,6 +216,10 @@ def render(kind, ident):
             via_bits.append(", ".join(rt["rvia"]) + " (return)")
     else:
         via_bits = ["via " + ", ".join(rt["via"])] if rt["via"] else []
+        _rl = {"empty_return": "empty return (deadhead)", "multi_drop": "multi-drop return",
+               "backhaul": "backhaul", "ambiguous": "return unclear"}.get(rt.get("return_leg"))
+        if _rl:
+            via_bits.append(_rl)
     st.markdown(
         f'<div class="tt-card"><div style="display:flex;justify-content:space-between;'
         f'align-items:baseline;gap:.5rem"><div class="tt-h2" style="margin:0">{prim} {noun} '

@@ -170,15 +170,21 @@ def _render_cycles(frm, to):
     """Delivery-cycle view: load-to-load operational units (Task 10)."""
     cyc = db.q("SELECT cycle_id, origin_place_name o, destination_place_name d, cycle_type t, "
                "total_distance_km km, total_duration_s dur, via_places via, cycle_start_ts s, "
-               "cycle_end_ts e FROM delivery_cycles WHERE cycle_start_ts BETWEEN ? AND ? "
-               "ORDER BY cycle_start_ts DESC", (frm, to))
+               "cycle_end_ts e, return_leg_type rl FROM delivery_cycles "
+               "WHERE cycle_start_ts BETWEEN ? AND ? ORDER BY cycle_start_ts DESC", (frm, to))
     if cyc.empty:
         empty_state("No delivery cycles this period")
         return
     done = int((cyc["t"] != "incomplete").sum())
     prog = int((cyc["t"] == "incomplete").sum())
+    n_empty = int((cyc["rl"] == "empty_return").sum())
+    empty_note = (f' · {n_empty} empty return{"s" if n_empty != 1 else ""} (deadhead)'
+                  if n_empty else "")
     st.markdown(f'<div class="tt-small" style="margin:.2rem 0 .4rem"><b>Delivery cycles this '
-                f'period</b> ({done} completed · {prog} in progress)</div>', unsafe_allow_html=True)
+                f'period</b> ({done} completed · {prog} in progress{empty_note})</div>',
+                unsafe_allow_html=True)
+    rl_label = {"empty_return": "empty return", "multi_drop": "multi-drop return",
+                "backhaul": "backhaul", "ambiguous": "return unclear"}
     badge = theme.confidence_badge("inferred")
     for r in cyc.itertuples():
         via = ", ".join(json.loads(r.via or "[]"))
@@ -190,6 +196,9 @@ def _render_cycles(frm, to):
         when = (_fmt_range(int(r.s), int(r.e)) if r.e == r.e        # r.e is NaN when incomplete
                 else f"started {theme.fmt_dt(int(r.s), False)}")
         stats = f'{when} · {(r.km or 0):,.0f} km · {theme.fmt_dur(int(r.dur or 0))}'
+        ret = rl_label.get(r.rl) if isinstance(r.rl, str) else None
+        if ret:
+            stats += f' · <span style="color:var(--accent)">{ret}</span>'
         c1, c2 = st.columns([6, 1])
         with c1:
             st.markdown(
