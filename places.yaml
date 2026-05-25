@@ -20,13 +20,19 @@
 #     lat: <lat>
 #     lon: <lon>
 #     type: transit
+#
+# `type_confidence:` (high|medium|low; default low) and `type_reasoning:` (free text) record how
+# sure you are of the type. A low-confidence label that disagrees with the detector's pattern
+# analysis is surfaced on the Map's "Labels that may need review" panel; high-confidence labels
+# override the detector silently.
 
 - label: Nairobi yard (Mugumoini)
   lat: -1.332095
   lon: 36.872111
   type: depot
   home: true
-  notes: "Truck home base — Mugumoini, Nairobi, near the ICD. Confirmed by Genwatt May 2026; overnight parks and stages between runs."
+  type_confidence: high
+  type_reasoning: "Confirmed by Genwatt May 2026: real home base at Mugumoini, Nairobi (near the ICD); overnight parks and stages between runs."
 
 # Bamburi Cement's Athi River facility is the primary cement-pickup CUSTOMER (Genwatt hauls
 # for Bamburi). Two detected spots ~1.6 km apart, both labelled the same so they read as one
@@ -35,16 +41,19 @@
   lat: -1.42372
   lon: 36.95368
   type: customer
-  notes: "Bamburi Cement Athi River facility — cement pickup. Corrected May 2026: this is a customer, not the yard. Was 'Athi River yard'."
+  type_confidence: high
+  type_reasoning: "Confirmed by Genwatt May 2026: primary cement loading point for the cement-hauling operation. Corrected May 2026 (was the mislabeled 'Athi River yard')."
 
 - label: Bamburi Cement (Athi River)
   lat: -1.43647
   lon: 36.96062
   type: customer
-  notes: "Bamburi Cement Athi River facility — second loading spot ~1.6 km from the other. Was 'Genwatt office (Athi River)'."
+  type_confidence: high
+  type_reasoning: "Confirmed by Genwatt May 2026: second cement-loading spot ~1.6 km from the other Bamburi cluster (was 'Genwatt office (Athi River)')."
 
 - label: Cheptiret (A104 roadside)
   lat: 0.3564
   lon: 35.3561
   type: transit
-  notes: "A104 Eldoret–Nakuru — Diesel Power fuel + Cheptiret police post"
+  type_confidence: low
+  type_reasoning: "Inferred from Google Maps (A104 Eldoret–Nakuru: Diesel Power fuel + Cheptiret police post). Not confirmed by observation; the detector currently disagrees — see the mismatch panel."

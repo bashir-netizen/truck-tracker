@@ -169,13 +169,15 @@ def rebuild(con, unit_id):
         weak = override is None and bool(
             re.match(r"^(Place near |\d+(\.\d+)? km from )", label))
         rows.append((place_id, label, clat, clon, int(round(radius)), visits,
-                     int(dwell), 1 if weak else 0, _entry_type(entry), 1 if entry else 0))
+                     int(dwell), 1 if weak else 0, _entry_type(entry), 1 if entry else 0,
+                     (entry.get("type_confidence", "low") if entry else None),
+                     (entry.get("type_reasoning") if entry else None)))
         place_id += 1
 
     con.executemany(
         "INSERT INTO places (place_id, label, lat, lon, radius_m, visit_count, "
-        "visit_time_total_s, needs_label, type, yaml_labeled) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?)", rows)
+        "visit_time_total_s, needs_label, type, yaml_labeled, type_confidence, type_reasoning) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows)
 
     # Map each parking to its nearest place so the dashboard can sum in-range
     # dwell with plain SQL.

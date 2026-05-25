@@ -165,9 +165,14 @@ CREATE TABLE IF NOT EXISTS places (
     via_visits         INTEGER,
     loading_share      REAL,
     destination_share  REAL,
-    suggested_role     TEXT,         -- loading|destination|transit|ambiguous
+    suggested_role     TEXT,         -- loading|destination|transit|mixed_use|ambiguous
     role_context       TEXT,         -- JSON: loading -> dests reached, etc.
-    yaml_labeled       INTEGER       -- 1 = matched a places.yaml entry (owner-classified)
+    yaml_labeled       INTEGER,      -- 1 = matched a places.yaml entry (owner-classified)
+    terminus_visits    INTEGER,      -- truck reversed toward home here (Task 11)
+    throughpass_visits INTEGER,      -- truck continued away from home past here
+    terminus_share     REAL,
+    type_confidence    TEXT,         -- high|medium|low (places.yaml; default low when labelled)
+    type_reasoning     TEXT          -- why the owner gave this type (places.yaml)
 );
 
 -- Journeys: trip legs stitched across short gaps; the real A->B runs.

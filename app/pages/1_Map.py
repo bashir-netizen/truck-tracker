@@ -582,6 +582,54 @@ _render_suggestions("Suspected loading customers", _role_suggestions("loading"),
 _render_suggestions("Suspected delivery destinations", _role_suggestions("destination"),
                     "destination")
 
+
+# --- Labels that may need review (Task 11) --------------------------------
+def _role_matches_type(role, typ):
+    return ((role == "loading" and typ == "customer")
+            or (role == "destination" and typ in ("destination", "customer"))
+            or (role == "transit" and typ == "transit")
+            or role in ("ambiguous", "mixed_use", None))
+
+
+def _render_label_review():
+    df = db.q("SELECT label, lat, lon, type, suggested_role, type_reasoning, terminus_share, "
+              "median_dwell_s, total_visits FROM places "
+              "WHERE COALESCE(yaml_labeled,0)=1 AND type_confidence='low'")
+    rows = [r for r in df.itertuples() if not _role_matches_type(r.suggested_role, r.type)]
+    if not rows:
+        return
+    explain = {
+        "destination": ["The truck delivered here — relabel as a destination/customer",
+                        "It turned back here for another reason (aborted run, long rest)",
+                        "A journey is mis-segmented"],
+        "loading": ["The truck loads here — relabel as a customer",
+                    "Coincidence — often the first stop but not actually loading"],
+        "transit": ["Genuine pass-through — the label is right",
+                    "Brief stops only, not a delivery/loading point"]}
+    st.markdown('<hr/>', unsafe_allow_html=True)
+    st.subheader("⚠ Labels that may need review")
+    st.caption("Low-confidence labels whose travel pattern disagrees with the type you set. "
+               "You decide — update places.yaml if the pattern is right.")
+    for r in rows:
+        med = theme.fmt_dur(r.median_dwell_s) if r.median_dwell_s else "—"
+        ev = (f"terminated here on {int(round((r.terminus_share or 0) * 100))}% of "
+              f"{r.total_visits or 0} visit(s) · {med} dwell")
+        maps = f'https://www.google.com/maps?q={r.lat:.5f},{r.lon:.5f}'
+        expl = "".join(f"<li>{e}</li>" for e in explain.get(r.suggested_role, []))
+        st.markdown(
+            '<div class="tt-card"><div style="display:flex;justify-content:space-between;gap:.5rem">'
+            f'<div><b>{r.label}</b> <span class="tt-pill neutral">labeled {r.type}</span></div>'
+            f'<a href="{maps}" target="_blank" class="tt-small">Google Maps →</a></div>'
+            f'<div class="tt-small">Pattern suggests <b style="color:var(--accent)">'
+            f'{r.suggested_role}</b> ({ev})</div>'
+            + (f'<div class="tt-small">On file: {r.type_reasoning}</div>' if r.type_reasoning else '')
+            + (f'<div class="tt-small">Possible explanations:<ul style="margin:.2rem 0 0 1rem">'
+               f'{expl}</ul></div>' if expl else '')
+            + '</div>', unsafe_allow_html=True)
+
+
+_render_label_review()
+
 # --- Route summary + cost / what-if (kept; tucked away) --------------------
 all_routes = [(jc, dm) for jc, dm in db.q(
     "SELECT journey_character, distance_m FROM journeys WHERE is_local=0 "

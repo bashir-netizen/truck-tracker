@@ -50,6 +50,7 @@ def rebuild(con, unit_id):
 
     total = defaultdict(int)
     loading, destination, via = defaultdict(int), defaultdict(int), defaultdict(int)
+    terminus, throughpass = defaultdict(int), defaultdict(int)   # direction-reversal signal
     loaded_before = defaultdict(Counter)   # loading place_id -> {destination label: n}
 
     for seg in segments:
@@ -63,15 +64,29 @@ def rebuild(con, unit_id):
                   key=lambda pid: _haversine_km(depot.get("lat"), depot.get("lon"),
                                                 P.get(pid, {}).get("lat"), P.get(pid, {}).get("lon")))
         far_label = P.get(far, {}).get("label", "?")
-        for idx, (d, _ts) in enumerate(dests):
+
+        def _dist(pid):
+            return _haversine_km(depot.get("lat"), depot.get("lon"),
+                                 P.get(pid, {}).get("lat"), P.get(pid, {}).get("lon"))
+
+        arrivals = [d for (_o, d, _ts) in seg if d is not None]   # incl depot, for direction
+        ndi = 0
+        for ai, d in enumerate(arrivals):
+            if d in depot_ids:
+                continue
             total[d] += 1
             if d == far:
                 destination[d] += 1
-            elif idx == 0:                 # first non-depot stop after leaving home
+            elif ndi == 0:                 # first non-depot stop after leaving home
                 loading[d] += 1
                 loaded_before[d][far_label] += 1
             else:
                 via[d] += 1
+            ndi += 1
+            if ai + 1 < len(arrivals):     # reversed toward home (incl. heading to depot) = terminus
+                nd = arrivals[ai + 1]
+                nxt = 0.0 if nd in depot_ids else _dist(nd)
+                (terminus if nxt < _dist(d) else throughpass)[d] += 1
 
     # Same-label clusters can be ONE facility split across DBSCAN clusters (~km apart):
     # e.g. Bamburi's journey-arrivals land on one cluster while its long loads register on
@@ -83,17 +98,19 @@ def rebuild(con, unit_id):
     def _group_role(pids):
         gt = sum(total.get(x, 0) for x in pids)
         gl = sum(loading.get(x, 0) for x in pids)
-        gd = sum(destination.get(x, 0) for x in pids)
+        gter = sum(terminus.get(x, 0) for x in pids)
         gp75 = max((P[x]["p75"] for x in pids), default=0)        # the cluster that actually loads
         gmed = P[max(pids, key=lambda x: total.get(x, 0))]["median"]  # busiest cluster's median
         lsh = gl / gt if gt else 0.0
-        dsh = gd / gt if gt else 0.0
+        tsh = gter / gt if gt else 0.0                            # how often the truck reversed here
         if lsh >= 0.5 and gp75 >= LOAD_MIN_DWELL_S:
             return "loading"
-        if dsh >= 0.5:
+        if tsh >= 0.5 and gmed >= 3600:
             return "destination"
-        if gmed and gmed < TRANSIT_MAX_DWELL_S and gt >= 2:
+        if tsh < 0.3 and gp75 and gp75 < TRANSIT_MAX_DWELL_S:
             return "transit"
+        if 0.3 <= tsh <= 0.7:
+            return "mixed_use"
         return "ambiguous"
 
     role_by_label = {lab: _group_role(pids) for lab, pids in groups.items()}
@@ -101,16 +118,20 @@ def rebuild(con, unit_id):
     for pid, p in P.items():
         t = total.get(pid, 0)
         lo, de, vi = loading.get(pid, 0), destination.get(pid, 0), via.get(pid, 0)
+        ter, thr = terminus.get(pid, 0), throughpass.get(pid, 0)
         lo_share = round(lo / t, 2) if t else 0.0
         de_share = round(de / t, 2) if t else 0.0
+        ter_share = round(ter / t, 2) if t else 0.0
         role = role_by_label[p["label"]]
         ctx = ({"loaded_before": dict(loaded_before.get(pid, {}))} if role == "loading"
-               else {"farthest_point": True} if role == "destination" else {})
+               else {"terminus_share": ter_share, "median_dwell_s": p["median"]}
+               if role in ("destination", "mixed_use") else {})
         con.execute(
             "UPDATE places SET total_visits=?, loading_visits=?, destination_visits=?, "
-            "via_visits=?, loading_share=?, destination_share=?, suggested_role=?, "
-            "role_context=? WHERE place_id=?",
-            (t, lo, de, vi, lo_share, de_share, role, json.dumps(ctx), pid))
+            "via_visits=?, terminus_visits=?, throughpass_visits=?, loading_share=?, "
+            "destination_share=?, terminus_share=?, suggested_role=?, role_context=? "
+            "WHERE place_id=?",
+            (t, lo, de, vi, ter, thr, lo_share, de_share, ter_share, role, json.dumps(ctx), pid))
 
     yaml_by_label = {p["label"]: p["yaml"] for p in P.values()}
     n_suggest = sum(1 for lab, role in role_by_label.items()
@@ -127,33 +148,38 @@ def _fmt(s):
     return f"{h}h{m:02d}m" if h else f"{m}m"
 
 
+def role_matches_type(role, typ):
+    """Whether a journey-derived role agrees with the owner's places.yaml type."""
+    return ((role == "loading" and typ == "customer")
+            or (role == "destination" and typ in ("destination", "customer"))
+            or (role == "transit" and typ == "transit")
+            or role == "ambiguous")
+
+
 def _print_summary(con):
     rows = con.execute(
-        "SELECT label, type, yaml_labeled, total_visits, loading_visits, destination_visits, "
-        "median_dwell_s, p75_dwell_s, loading_share, destination_share, suggested_role "
+        "SELECT label, type, yaml_labeled, total_visits, loading_visits, median_dwell_s, "
+        "p75_dwell_s, loading_share, terminus_share, suggested_role, type_confidence "
         "FROM places ORDER BY (suggested_role='loading') DESC, total_visits DESC").fetchall()
 
     # Calibration FIRST: a KNOWN loading customer (Bamburi) must read 'loading'.
     bam = [r for r in rows if r[0] and r[0].startswith("Bamburi")]
     print("  place_roles — BAMBURI CALIBRATION (known loading customer; must be 'loading'):")
     c_lo = c_t = 0
-    for lab, typ, yl, t, lo, de, med, p75, lsh, dsh, role in bam:
+    for lab, typ, yl, t, lo, med, p75, lsh, tsh, role, conf in bam:
         c_lo += lo or 0
         c_t += t or 0
         flag = "OK" if role == "loading" else "!! NOT loading — re-tune"
-        print(f"    {lab[:24]:24} v={t} load={lo} dest={de} median={_fmt(med)} p75={_fmt(p75)} "
+        print(f"    {lab[:24]:24} v={t} load={lo} median={_fmt(med)} p75={_fmt(p75)} "
               f"load_share={lsh} -> {role}  [{flag}]")
     if c_t:
         print(f"    combined: load_share={c_lo / c_t:.2f} over {c_t} visits "
               f"({'PASS' if c_lo / c_t >= 0.5 else 'FAIL'})")
 
-    print("  place_roles — all places (name · type · own · visits · median · load% · dest% · role):")
-    for lab, typ, yl, t, lo, de, med, p75, lsh, dsh, role in rows:
-        mism = ""
-        if role == "loading" and typ != "customer":
-            mism = "  <- role≠type"
-        elif role == "transit" and typ != "transit":
-            mism = "  <- role≠type"
-        print(f"    {(lab or '?')[:24]:24} {typ or '?':11} own={'y' if yl else '-'} "
-              f"v={t or 0:<2} med={_fmt(med):>6} load={lsh or 0:.2f} dest={dsh or 0:.2f} "
+    print("  place_roles — all places (name · type · conf · own · visits · median · load% · "
+          "term% · role):")
+    for lab, typ, yl, t, lo, med, p75, lsh, tsh, role, conf in rows:
+        mism = ("  <- REVIEW" if conf == "low" and not role_matches_type(role, typ) else "")
+        print(f"    {(lab or '?')[:24]:24} {typ or '?':11} {conf or '-':6} own={'y' if yl else '-'} "
+              f"v={t or 0:<2} med={_fmt(med):>6} load={lsh or 0:.2f} term={tsh or 0:.2f} "
               f"{role or '-'}{mism}")

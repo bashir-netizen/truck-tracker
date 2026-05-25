@@ -183,3 +183,19 @@ customer). Still deferred:
 - **Multi-row customers (view-level):** detection already groups same-label clusters; still to
   do is aggregating stats across rows in a customer-level / "top customers" view (one facility
   that spans clusters ~km apart should read as one customer everywhere, not N rows).
+
+## Modeling — under consideration
+- **Customer-anchored cycles by specific origin** (loading customer → delivery → next load).
+- **ETA on in-progress cycles** from the historical median duration for that destination.
+- **Task 13 — surface return-leg classification in the UI**, once Task 12's classifier is
+  validated on real data (≥70% match on verifiable cycles).
+- **Backhaul-opportunity detection** — flag cycles where a backhaul *could have* been done
+  given the geography (empty return passing near a known loading point).
+- **Positioning trips as a first-class category.** Yard ↔ loading-anchor hops with no delivery
+  between are a real, significant operational pattern (this window: 3 of 6 cycles), not noise.
+  Surface them explicitly in analytics — e.g. "this month: 2 deliveries · 3 positioning · 1 in
+  progress" — so the **empty-miles ratio** is visible at a glance.
+- **`end_anchor_type` (depot | loading_customer).** A cycle can end at the depot OR back at a
+  loading anchor — both are valid "next anchor" types, but they're different signals: ending at
+  the depot = "came home after delivery"; ending at Bamburi = "went straight to load the next
+  cargo". Expose the distinction in future analytics (and per-cycle audit).
