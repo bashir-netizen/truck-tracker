@@ -119,9 +119,9 @@ if status_now["away"]:
     _col = truck_status.LEVEL_COLOR.get(_lvl, theme.ACCENT)
     _mark = "⚠ " if _lvl in ("warn", "critical") else ""
     st.markdown(f'<div style="margin:.2rem 0 .4rem;color:{_col};font-weight:600">'
-                f'{_mark}Currently at {status_now["place"]} · '
-                f'{theme.fmt_dur(status_now["away_s"])} away from base'
-                f'{" · no recent GPS" if status_now["silent"] else ""}</div>',
+                f'{_mark}Away from base {theme.fmt_dur(status_now["away_s"])} · '
+                f'last seen near {status_now["place"]} '
+                f'({theme.fmt_dur(status_now["since_seen_s"])} ago)</div>',
                 unsafe_allow_html=True)
 elif status_now["last_home_ts"]:
     st.markdown(f'<div class="tt-small" style="margin:.2rem 0 .4rem">At home base since '
@@ -192,10 +192,11 @@ with gcol:
         lvl = status_now["level"]
         col = truck_status.LEVEL_COLOR.get(lvl, theme.ACCENT)
         mark = "⚠ " if lvl in ("warn", "critical") else ""
-        body = (f'<b>{mark}Currently out:</b> at {status_now["place"]} since '
-                f'{theme.fmt_dt(status_now["arrived_ts"], False)} · '
-                f'{theme.fmt_dur(status_now["away_s"])} away from base'
-                + (" · no recent GPS" if status_now["silent"] else ""))
+        body = (f'<b>{mark}Currently out</b> — away from base since '
+                f'{theme.fmt_dt(status_now["away_since"], False)} · '
+                f'{theme.fmt_dur(status_now["away_s"])}<br>'
+                f'<span class="tt-small">Last seen near {status_now["place"]} · '
+                f'{theme.fmt_dur(status_now["since_seen_s"])} ago</span>')
         if lvl == "critical":
             st.markdown(f'<div style="background:#fbe3df;border-radius:8px;padding:.45rem .7rem;'
                         f'margin:.1rem 0 .6rem;color:{col};font-weight:600">{body}</div>',

@@ -30,13 +30,15 @@ def compute():
     """Period-independent current status dict. See the module docstring for the units.
 
     Keys: away (bool), place, place_id, place_unlabeled, away_since, arrived_ts,
-    away_s, silent, last_home_ts, level ('home'|'attention'|'warn'|'critical').
+    away_s, silent, last_home_ts, last_data_ts, since_seen_s,
+    level ('home'|'attention'|'warn'|'critical').
     """
     last_data = db.last_data_ts() or int(time.time())
     silent = (time.time() - last_data) > SILENT_S
     status = {"away": False, "place": None, "place_id": None, "place_unlabeled": False,
               "away_since": None, "arrived_ts": None, "away_s": 0, "silent": silent,
-              "last_home_ts": None, "level": "home"}
+              "last_home_ts": None, "level": "home", "last_data_ts": last_data,
+              "since_seen_s": max(0, int(time.time()) - last_data)}
 
     depot_ids = {int(r.place_id) for r in
                  db.q("SELECT place_id FROM places WHERE type='depot'").itertuples()}
