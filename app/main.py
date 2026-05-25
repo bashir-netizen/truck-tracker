@@ -245,7 +245,7 @@ with gcol:
             st.markdown(f'<div class="tt-small" style="margin:.1rem 0 .6rem;color:{col}">{body}'
                         f'</div>', unsafe_allow_html=True)
 
-    view = st.segmented_control("View", ["Delivery cycles", "Depot returns"],
+    view = st.segmented_control("View", ["Delivery cycles", "Round trips"],
                                 default="Delivery cycles", key="geo_view") or "Delivery cycles"
     if view == "Delivery cycles":
         _render_cycles(frm, to)
