@@ -16,7 +16,8 @@ from pathlib import Path
 
 import config
 from enrich import (anomalies, corridors, delivery_cycles, driver, eco, journeys,
-                    maintenance, metrics, place_roles, places, round_trips, trip_paths)
+                    maintenance, metrics, place_roles, places, return_leg, round_trips,
+                    trip_paths)
 
 SCHEMA = (Path(__file__).resolve().parents[1] / "ingest" / "schema.sql").read_text()
 DERIVED = ["trip_metrics", "journeys", "corridors", "driver_score",
@@ -46,6 +47,7 @@ def main():
         n_round = round_trips.rebuild(con, unit_id)
         n_roles = place_roles.rebuild(con, unit_id)
         n_cycles = delivery_cycles.rebuild(con, unit_id)
+        return_leg.rebuild(con, unit_id)             # classifies each delivery cycle's return leg
         n_paths = trip_paths.rebuild(con, unit_id)
         n_metrics = metrics.rebuild(con, unit_id)
         eco.rebuild(con, unit_id)            # eco_flags (hard-safety) before driver
